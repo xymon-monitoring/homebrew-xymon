@@ -53,14 +53,18 @@ class XymonServer < Formula
     # matching client/ tree); the log dir (XYMONLOGDIR) is outside the keg and
     # is not created by the install, so make it here.
     (var/"log/xymon").mkpath
-    # `make install` also does not create the writable runtime dirs, so the
-    # server can't actually run after install:
-    #   XYMONTMP (= XYMONHOME/tmp = prefix/server/tmp) holds the xymond_rrd
-    #     control socket and xymonnet's ping work files. Missing, xymond_rrd
-    #     dies every cycle ("Cannot bind to cache-control socket (No such file
-    #     or directory)") so no RRDs/graphs are ever written, and the conn
-    #     (ping) test fails with "Cannot create file .../tmp/ping-stdout".
-    #   XYMONVAR (= prefix/data) holds the RRDs, history, acks, etc.
+  end
+
+  # `make install` does not create the writable runtime dirs, and creating them
+  # in `install` does not work either: Homebrew's Cleaner strips empty
+  # directories from the staged keg before it is moved into the Cellar. Create
+  # them in post_install, which runs after the keg is finalized, so they persist:
+  #   server/tmp = XYMONTMP -- xymond_rrd's cache-control socket and xymonnet's
+  #     ping work files. Missing, xymond_rrd dies every cycle ("Cannot bind to
+  #     cache-control socket (No such file or directory)"), so no RRDs/graphs are
+  #     written, and the conn (ping) test fails creating .../tmp/ping-stdout.
+  #   data/*     = XYMONVAR -- RRDs, history, acks, disabled flags, status logs.
+  def post_install
     (prefix/"server/tmp").mkpath
     %w[rrd acks data disabled hist histlogs logs].each { |d| (prefix/"data"/d).mkpath }
   end
