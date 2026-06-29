@@ -55,18 +55,25 @@ class XymonServer < Formula
     (var/"log/xymon").mkpath
   end
 
-  # `make install` does not create the writable runtime dirs, and creating them
-  # in `install` does not work either: Homebrew's Cleaner strips empty
-  # directories from the staged keg before it is moved into the Cellar. Create
-  # them in post_install, which runs after the keg is finalized, so they persist:
+  # Writable runtime dirs are created here, not in `install`: the build sandbox
+  # forbids writing under var, and Homebrew's Cleaner strips empty directories
+  # from the staged keg before it is moved into the Cellar. post_install runs
+  # after the keg is finalized, so what it creates persists.
   #   server/tmp = XYMONTMP -- xymond_rrd's cache-control socket and xymonnet's
   #     ping work files. Missing, xymond_rrd dies every cycle ("Cannot bind to
   #     cache-control socket (No such file or directory)"), so no RRDs/graphs are
   #     written, and the conn (ping) test fails creating .../tmp/ping-stdout.
-  #   data/*     = XYMONVAR -- RRDs, history, acks, disabled flags, status logs.
+  #   #{var}/xymon = XYMONVAR -- RRDs, history, acks, disabled flags, status
+  #     logs. XYMONVAR bakes as prefix/data (inside the keg), so a `brew
+  #     reinstall` or version bump would wipe all collected history. Keep the
+  #     data in the persistent var tree and symlink the keg path to it so it
+  #     survives across (re)installs.
   def post_install
     (prefix/"server/tmp").mkpath
-    %w[rrd acks data disabled hist histlogs logs].each { |d| (prefix/"data"/d).mkpath }
+    xymonvar = var/"xymon"
+    %w[rrd acks data disabled hist histlogs logs].each { |d| (xymonvar/d).mkpath }
+    rm_rf prefix/"data"
+    ln_sf xymonvar, prefix/"data"
   end
 
   # Run the server under launchd: `brew services start xymon-server`.
