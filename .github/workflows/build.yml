@@ -34,6 +34,14 @@ jobs:
         # so a PR tests the edited formula, not the pushed remote.
         run: brew tap "${GITHUB_REPOSITORY/homebrew-/}" "$PWD"
 
+      - name: Trust this tap
+        # Homebrew's Tap-Trust enforcement refuses to load formulae from a
+        # third-party tap unless trusted. `brew install <formula>` auto-trusts
+        # only the named formula, but xymon-client's `conflicts_with
+        # "xymon-server"` makes brew load the sibling formula too, which is
+        # then refused. Trust the whole (self-owned) tap so sibling loads work.
+        run: brew trust "${GITHUB_REPOSITORY/homebrew-/}"
+
       - name: Build ${{ matrix.formula }} from latest commit (--HEAD)
         run: brew install --HEAD --build-from-source "${GITHUB_REPOSITORY/homebrew-/}/${{ matrix.formula }}"
 
