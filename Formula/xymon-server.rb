@@ -85,7 +85,12 @@ class XymonServer < Formula
   ].freeze
 
   def post_install
-    (prefix/"server/tmp").mkpath
+    # Empty runtime dirs that Homebrew's Cleaner prunes from the keg.
+    # server/tmp: xymond_rrd's cache-control socket + xymonnet ping work files.
+    # client/{tmp,logs}: the bundled local client (the [xymonclient] task in
+    #   tasks.cfg self-monitors the server host). Without client/tmp the client
+    #   can't write msg.localhost.txt, so the host reports no cpu/memory/disk.
+    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
     # www/{html,notes,rep,snap,wml} ship empty, so Homebrew's Cleaner prunes
     # them from the keg. xymongen then logs "Cannot read links in directory
     # .../www/notes" and skips host notes; recreate them.
