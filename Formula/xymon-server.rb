@@ -91,6 +91,22 @@ class XymonServer < Formula
     rm_rf prefix/"data"
     ln_sf xymonvar, prefix/"data"
 
+    # Persist config in Homebrew's etc so edits (hosts.cfg, graphs.cfg,
+    # alerts.cfg, xymonserver.cfg ...) survive reinstalls. configure bakes the
+    # versioned keg path into the configs, which would dangle after a version
+    # bump, so rewrite those occurrences to the stable opt_prefix path first.
+    # Seed each file once and symlink the keg's etc to the persistent copy;
+    # never overwrite a file the user has already edited.
+    src_etc = prefix/"server/etc"
+    dst_etc = etc/"xymon"
+    dst_etc.mkpath
+    src_etc.children.select(&:file?).each do |f|
+      dst = dst_etc/f.basename
+      dst.write(f.read.gsub(prefix.to_s, opt_prefix.to_s)) unless dst.exist?
+    end
+    rm_rf src_etc
+    ln_sf dst_etc, src_etc
+
     cgiwrap = prefix/"server/bin/cgiwrap"
     if cgiwrap.exist?
       { "cgi-bin" => CGI_WRAPPERS, "cgi-secure" => SECURE_CGI_WRAPPERS }.each do |dir, names|
