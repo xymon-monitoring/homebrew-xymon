@@ -44,6 +44,52 @@ brew upgrade --fetch-HEAD xymon-monitoring/xymon/xymon-server
 brew reinstall --HEAD xymon-monitoring/xymon/xymon-server
 ```
 
+## Build a specific branch, commit, or pull request
+
+The `head` stanza always tracks `main`. To test a feature branch (e.g. a
+pending PR) or a fork, point `head` at it in your local tap checkout and
+rebuild. Edit the formula:
+
+```sh
+brew edit xymon-monitoring/xymon/xymon-server
+```
+
+and change the `head` line to your repo/branch:
+
+```ruby
+# from:
+head "https://github.com/xymon-monitoring/xymon.git", branch: "main"
+# to a fork's branch (a pending PR):
+head "https://github.com/<fork>/xymon.git", branch: "<feature-branch>"
+# or pin an exact commit on any repo:
+head "https://github.com/<fork>/xymon.git", revision: "<full-40-char-sha>"
+```
+
+Then rebuild. `--HEAD` caches the git clone, so to guarantee you get the
+branch's current tip, clear that cache first:
+
+```sh
+rm -rf "$(brew --cache)"/*xymon-server*
+brew reinstall xymon-monitoring/xymon/xymon-server
+```
+
+When done, restore the tap to its pristine `main` and rebuild:
+
+```sh
+git -C "$(brew --repository xymon-monitoring/xymon)" checkout -- .
+brew reinstall xymon-monitoring/xymon/xymon-server
+```
+
+Notes:
+
+- A `revision:` build is reproducible (exact commit); a `branch:` build follows
+  that branch's tip each time you re-fetch.
+- The edited tap is a dirty git checkout, so `brew update` warns until you
+  revert it (the `checkout -- .` above).
+- `brew reinstall --HEAD` is rejected by some Homebrew versions; plain
+  `brew reinstall` reuses the install receipt (which is already `--HEAD`), so it
+  rebuilds from `head` regardless.
+
 ## Pinning a stable release (TODO)
 
 There's no published Xymon release tarball yet, so these are `--HEAD`-only. Once
