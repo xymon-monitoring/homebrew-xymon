@@ -116,6 +116,17 @@ class XymonServer < Formula
         end
       end
     end
+
+    # Best-effort: graceful-reload Homebrew's httpd. The CGIs are served out of
+    # the versioned keg via the opt symlink; a reinstall swaps the keg under a
+    # running httpd, which keeps exec'ing the old (now-deleted) path until it is
+    # reloaded. `httpd -k graceful` re-resolves opt to the new keg without
+    # dropping connections. Calling the binary directly (not `brew services`)
+    # avoids deadlocking on Homebrew's lock; quiet_system never raises, so this
+    # is a no-op when Homebrew httpd is absent or not running. If you serve the
+    # CGIs with a different web server, restart it yourself after a reinstall.
+    httpd = HOMEBREW_PREFIX/"bin/httpd"
+    quiet_system httpd, "-k", "graceful" if httpd.exist?
   end
 
   # Run the server under launchd: `brew services start xymon-server`.
@@ -144,6 +155,12 @@ class XymonServer < Formula
 
       Binaries are under #{opt_prefix}/server/bin (not linked into PATH); run e.g.
         #{opt_prefix}/server/bin/xymon 127.0.0.1 "ping"
+
+      After a `brew reinstall`/upgrade, restart the service:
+        brew services restart xymon-server
+      CGIs are served from the versioned keg, so a running web server keeps
+      using the old path until reloaded. post_install graceful-reloads Homebrew
+      httpd automatically; if you use a different web server, reload it yourself.
 
       Web UI: Xymon's pages are static HTML + CGIs that need an HTTP server with
       CGI - the formula does NOT touch your web server (that's an admin choice).
