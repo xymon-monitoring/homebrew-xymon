@@ -86,6 +86,10 @@ class XymonServer < Formula
 
   def post_install
     (prefix/"server/tmp").mkpath
+    # www/{html,notes,rep,snap,wml} ship empty, so Homebrew's Cleaner prunes
+    # them from the keg. xymongen then logs "Cannot read links in directory
+    # .../www/notes" and skips host notes; recreate them.
+    %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
     xymonvar = var/"xymon"
     %w[rrd acks data disabled hist histlogs logs].each { |d| (xymonvar/d).mkpath }
     rm_rf prefix/"data"
