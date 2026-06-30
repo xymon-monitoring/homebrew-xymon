@@ -68,12 +68,38 @@ class XymonServer < Formula
   #     reinstall` or version bump would wipe all collected history. Keep the
   #     data in the persistent var tree and symlink the keg path to it so it
   #     survives across (re)installs.
+  # We also re-assert the CGI wrapper hardlinks here: `make install` hardlinks
+  # cgiwrap to every CGISCRIPTS/SECCGISCRIPTS name, but Homebrew's keg
+  # post-processing drops some of them (observed: history.sh, eventlog.sh),
+  # leaving those CGIs returning 404. Recreating them in post_install (after the
+  # keg is finalized) restores the History/Event-log pages and survives reinstalls.
+  CGI_WRAPPERS = %w[
+    history.sh eventlog.sh report.sh reportlog.sh snapshot.sh findhost.sh
+    csvinfo.sh columndoc.sh datepage.sh svcstatus.sh historylog.sh confreport.sh
+    confreport-critical.sh criticalview.sh certreport.sh nongreen.sh hostgraphs.sh
+    ghostlist.sh notifications.sh acknowledgements.sh hostlist.sh topchanges.sh
+    appfeed.sh appfeed-critical.sh showgraph.sh perfdata.sh
+  ].freeze
+  SECURE_CGI_WRAPPERS = %w[
+    acknowledge.sh enadis.sh criticaleditor.sh ackinfo.sh useradm.sh chpasswd.sh
+  ].freeze
+
   def post_install
     (prefix/"server/tmp").mkpath
     xymonvar = var/"xymon"
     %w[rrd acks data disabled hist histlogs logs].each { |d| (xymonvar/d).mkpath }
     rm_rf prefix/"data"
     ln_sf xymonvar, prefix/"data"
+
+    cgiwrap = prefix/"server/bin/cgiwrap"
+    if cgiwrap.exist?
+      { "cgi-bin" => CGI_WRAPPERS, "cgi-secure" => SECURE_CGI_WRAPPERS }.each do |dir, names|
+        names.each do |name|
+          target = prefix/dir/name
+          FileUtils.ln(cgiwrap, target) unless target.exist?
+        end
+      end
+    end
   end
 
   # Run the server under launchd: `brew services start xymon-server`.
