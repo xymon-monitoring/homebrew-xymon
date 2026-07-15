@@ -45,5 +45,11 @@ jobs:
       - name: Build ${{ matrix.formula }} from latest commit (--HEAD)
         run: brew install --HEAD --build-from-source "${GITHUB_REPOSITORY/homebrew-/}/${{ matrix.formula }}"
 
+      - name: Run the formula's test block
+        # `brew install` never runs `test do`, so without this the test block
+        # is only ever syntax-checked. It also exercises post_install wiring
+        # (runtime dirs, the etc persistence symlink) on the installed keg.
+        run: brew test "${GITHUB_REPOSITORY/homebrew-/}/${{ matrix.formula }}"
+
       - name: Show what was installed
         run: brew list --verbose "${{ matrix.formula }}" || true
