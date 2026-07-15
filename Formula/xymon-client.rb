@@ -93,6 +93,11 @@ class XymonClient < Formula
   end
 
   test do
-    assert_predicate prefix/"client", :exist?
+    # A client-only build lays out under the prefix root (bin/, etc/, ...);
+    # prefix/client only exists in the *server* layout.
+    assert_predicate prefix/"bin/xymonlaunch", :exist?
+    # etc/ is a symlink into #{etc}/xymon-client (made by post_install), so
+    # resolving a config file through it verifies the persistence wiring.
+    assert_predicate prefix/"etc/xymonclient.cfg", :exist?
   end
 end
