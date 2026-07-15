@@ -31,6 +31,22 @@ class XymonClient < Formula
     system "make", "install", "PKGBUILD=1"
   end
 
+  # Runtime dirs are created here, not in `install`: ext/, logs/ and tmp/ ship
+  # empty, and Homebrew's Cleaner strips empty directories from the staged keg
+  # before it is moved into the Cellar. post_install runs after the keg is
+  # finalized, so what it creates persists (same pattern as xymon-server).
+  #   tmp  -- xymonclient.sh assembles each report in tmp/msg.<hostname>.txt;
+  #     missing, every collection cycle fails and nothing is ever sent.
+  #   logs -- clientlaunch.cfg tasks write their LOGFILEs here.
+  #   ext  -- drop-in dir for user hook scripts started from clientlaunch.cfg.
+  def post_install
+    %w[ext logs tmp].each { |d| (prefix/d).mkpath }
+    # The launchd service logs to #{var}/log/xymon; nothing else creates that
+    # dir on a client-only machine (the server formula makes it in install),
+    # and launchd will not create missing log directories itself.
+    (var/"log/xymon").mkpath
+  end
+
   # Run the client under launchd: `brew services start xymon-client`.
   # xymonlaunch --no-daemon stays in the foreground so launchd supervises it.
   # (Build is CI-verified; the running service still wants a real macOS check.)
