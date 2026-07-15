@@ -45,6 +45,26 @@ class XymonClient < Formula
     # dir on a client-only machine (the server formula makes it in install),
     # and launchd will not create missing log directories itself.
     (var/"log/xymon").mkpath
+
+    # Persist config in Homebrew's etc so edits (XYMSRV in xymonclient.cfg,
+    # clientlaunch.cfg tasks ...) survive reinstalls - the caveat tells the
+    # user to edit these files, and they live inside the versioned keg.
+    # configure bakes the keg path into the configs, which would dangle after
+    # a version bump, so rewrite those occurrences to the stable opt_prefix
+    # path first. Seed each file once and symlink the keg's etc to the
+    # persistent copy; never overwrite a file the user has already edited.
+    # Same pattern as the xymon-server formula, in a separate etc dir so a
+    # machine switched between the (conflicting) server and client roles
+    # does not mix the two config sets.
+    src_etc = prefix/"etc"
+    dst_etc = etc/"xymon-client"
+    dst_etc.mkpath
+    src_etc.children.select(&:file?).each do |f|
+      dst = dst_etc/f.basename
+      dst.write(f.read.gsub(prefix.to_s, opt_prefix.to_s)) unless dst.exist?
+    end
+    rm_rf src_etc
+    ln_sf dst_etc, src_etc
   end
 
   # Run the client under launchd: `brew services start xymon-client`.
@@ -64,8 +84,11 @@ class XymonClient < Formula
   def caveats
     <<~EOS
       Xymon client installed under #{opt_prefix}.
-      Set XYMSRV (the server address) in #{opt_prefix}/etc/xymonclient.cfg, then:
+      Set XYMSRV (the server address) in #{etc}/xymon-client/xymonclient.cfg, then:
         brew services start xymon-client
+
+      Config lives in #{etc}/xymon-client (the keg's etc/ is a symlink to it),
+      so your edits survive reinstalls and upgrades.
     EOS
   end
 
