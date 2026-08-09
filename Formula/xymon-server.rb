@@ -1,5 +1,3 @@
-require_relative "../lib/xymon_etc"
-
 class XymonServer < Formula
   desc "Xymon network and systems monitor (server)"
   homepage "https://xymon.com/"
@@ -84,6 +82,9 @@ class XymonServer < Formula
     # Persist config in #{etc}/xymon so edits (hosts.cfg, graphs.cfg,
     # alerts.cfg, xymonserver.cfg ...) survive reinstalls and upgrades;
     # see lib/xymon_etc.rb for how (shared with xymon-client).
+    # Required here, not at the top of the file: postinstall re-loads the
+    # formula from the keg's .brew copy, where the tap's lib/ is absent.
+    require_relative "../lib/xymon_etc"
     XymonEtc.persist_etc(self, prefix/"server/etc", etc/"xymon")
   end
 
