@@ -39,9 +39,11 @@ the **newest commit**. HEAD installs don't auto-detect new commits — force a
 re-fetch to pull a fresh one:
 
 ```sh
+# upgrades only this formula (and its outdated dependencies), nothing else:
 brew upgrade --fetch-HEAD xymon-monitoring/xymon/xymon-server
-# or rebuild from scratch at the current tip:
-brew reinstall --HEAD xymon-monitoring/xymon/xymon-server
+# or rebuild from scratch at the current tip (reinstall takes no --HEAD flag;
+# it reuses the install receipt, which already records --HEAD):
+brew reinstall xymon-monitoring/xymon/xymon-server
 ```
 
 ## Build a specific branch, commit, or pull request
@@ -86,7 +88,7 @@ Notes:
   that branch's tip each time you re-fetch.
 - The edited tap is a dirty git checkout, so `brew update` warns until you
   revert it (the `checkout -- .` above).
-- `brew reinstall --HEAD` is rejected by some Homebrew versions; plain
+- `brew reinstall` does not accept `--HEAD` (invalid option); plain
   `brew reinstall` reuses the install receipt (which is already `--HEAD`), so it
   rebuilds from `head` regardless.
 
