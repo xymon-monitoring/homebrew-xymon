@@ -13,6 +13,13 @@ class XymonClient < Formula
   # conflict if both are linked. Install the client keg-only or unlink the other.
   conflicts_with "xymon-server", because: "both install overlapping client tools"
 
+  # ext/, logs/ and tmp/ ship empty; keep Homebrew's Cleaner from pruning them.
+  #   tmp  -- xymonclient.sh assembles each report in tmp/msg.<hostname>.txt;
+  #     missing, every collection cycle fails and nothing is ever sent.
+  #   logs -- clientlaunch.cfg tasks write their LOGFILEs here.
+  #   ext  -- drop-in dir for user hook scripts started from clientlaunch.cfg.
+  skip_clean "ext", "logs", "tmp"
+
   def install
     # configure.client is env-var driven too. CONFTYPE selects the client
     # config flavor; XYMSRV is the server this client reports to (set at runtime).
@@ -29,42 +36,31 @@ class XymonClient < Formula
     # creating them first; Homebrew only makes `prefix`, so pre-create them.
     %w[bin etc ext local logs tmp].each { |d| (prefix/d).mkpath }
     system "make", "install", "PKGBUILD=1"
+
+    # Persist config in #{etc}/xymon-client so edits (XYMSRV in
+    # xymonclient.cfg, clientlaunch.cfg tasks ...) survive reinstalls and
+    # upgrades. configure bakes the versioned keg path into the configs,
+    # which would dangle after a version bump, so rewrite those occurrences
+    # to the stable opt_prefix path first (binary-safe: the files are not
+    # guaranteed UTF-8-clean). Installing into #{etc} at install time hands
+    # the files to Homebrew's config protection: user-edited files are never
+    # overwritten, and changed upstream defaults land alongside as *.default.
+    # A separate dir from the server's etc/xymon so a machine switched
+    # between the (conflicting) roles does not mix the two config sets.
+    keg_etc = prefix/"etc"
+    keg_etc.children.each do |f|
+      f.binwrite(f.binread.gsub(prefix.to_s, opt_prefix.to_s)) if f.file?
+    end
+    (etc/"xymon-client").install keg_etc.children
+    keg_etc.rmtree
+    prefix.install_symlink etc/"xymon-client" => "etc"
   end
 
-  # Runtime dirs are created here, not in `install`: ext/, logs/ and tmp/ ship
-  # empty, and Homebrew's Cleaner strips empty directories from the staged keg
-  # before it is moved into the Cellar. post_install runs after the keg is
-  # finalized, so what it creates persists (same pattern as xymon-server).
-  #   tmp  -- xymonclient.sh assembles each report in tmp/msg.<hostname>.txt;
-  #     missing, every collection cycle fails and nothing is ever sent.
-  #   logs -- clientlaunch.cfg tasks write their LOGFILEs here.
-  #   ext  -- drop-in dir for user hook scripts started from clientlaunch.cfg.
   def post_install
-    %w[ext logs tmp].each { |d| (prefix/d).mkpath }
     # The launchd service logs to #{var}/log/xymon; nothing else creates that
     # dir on a client-only machine (the server formula makes it in install),
     # and launchd will not create missing log directories itself.
     (var/"log/xymon").mkpath
-
-    # Persist config in Homebrew's etc so edits (XYMSRV in xymonclient.cfg,
-    # clientlaunch.cfg tasks ...) survive reinstalls - the caveat tells the
-    # user to edit these files, and they live inside the versioned keg.
-    # configure bakes the keg path into the configs, which would dangle after
-    # a version bump, so rewrite those occurrences to the stable opt_prefix
-    # path first. Seed each file once and symlink the keg's etc to the
-    # persistent copy; never overwrite a file the user has already edited.
-    # Same pattern as the xymon-server formula, in a separate etc dir so a
-    # machine switched between the (conflicting) server and client roles
-    # does not mix the two config sets.
-    src_etc = prefix/"etc"
-    dst_etc = etc/"xymon-client"
-    dst_etc.mkpath
-    src_etc.children.select(&:file?).each do |f|
-      dst = dst_etc/f.basename
-      dst.write(f.read.gsub(prefix.to_s, opt_prefix.to_s)) unless dst.exist?
-    end
-    rm_rf src_etc
-    ln_sf dst_etc, src_etc
   end
 
   # Run the client under launchd: `brew services start xymon-client`.
@@ -88,7 +84,15 @@ class XymonClient < Formula
         brew services start xymon-client
 
       Config lives in #{etc}/xymon-client (the keg's etc/ is a symlink to it),
-      so your edits survive reinstalls and upgrades.
+      so your edits survive reinstalls and upgrades; changed upstream defaults
+      are written alongside as *.default files.
+
+      After a `brew reinstall`/upgrade, restart the service (the running
+      xymonlaunch still points into the replaced keg):
+        brew services restart xymon-client
+
+      Upgrading from a revision that kept config inside the keg? Those edits
+      were not migrated - re-set XYMSRV in #{etc}/xymon-client/xymonclient.cfg.
     EOS
   end
 
@@ -96,8 +100,9 @@ class XymonClient < Formula
     # A client-only build lays out under the prefix root (bin/, etc/, ...);
     # prefix/client only exists in the *server* layout.
     assert_predicate prefix/"bin/xymonlaunch", :exist?
-    # etc/ is a symlink into #{etc}/xymon-client (made by post_install), so
-    # resolving a config file through it verifies the persistence wiring.
+    # etc/ must BE a symlink into #{etc}/xymon-client (made at install time):
+    # an existence check alone would also pass on a real, unwired etc/ dir.
+    assert_predicate prefix/"etc", :symlink?
     assert_predicate prefix/"etc/xymonclient.cfg", :exist?
   end
 end
