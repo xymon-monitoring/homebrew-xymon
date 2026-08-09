@@ -6,6 +6,8 @@ name: build (macOS, HEAD)
 #   surfaces here rather than at a user's `brew install --HEAD`.
 on:
   push:
+    branches: [master]   # PR branches build via pull_request; a bare push
+                         # trigger would double-build every PR push.
   pull_request:
   workflow_dispatch:
   schedule:
@@ -28,22 +30,26 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
-      - name: Register this checkout as a tap
+      - name: Derive the tap name
         # tap name = repo with the "homebrew-" prefix stripped (bonomani/xymon);
+        # computed once so every later step operates on the same tap.
+        run: echo "TAP=${GITHUB_REPOSITORY/homebrew-/}" >> "$GITHUB_ENV"
+
+      - name: Register this checkout as a tap
         # `brew tap <name> <path>` registers the checked-out files as that tap,
         # so a PR tests the edited formula, not the pushed remote.
-        run: brew tap "${GITHUB_REPOSITORY/homebrew-/}" "$PWD"
+        run: brew tap "$TAP" "$PWD"
 
       - name: Trust this tap
         # Homebrew's Tap-Trust enforcement refuses to load formulae from a
         # third-party tap unless trusted. `brew install <formula>` auto-trusts
-        # only the named formula, but xymon-client's `conflicts_with
-        # "xymon-server"` makes brew load the sibling formula too, which is
-        # then refused. Trust the whole (self-owned) tap so sibling loads work.
-        run: brew trust "${GITHUB_REPOSITORY/homebrew-/}"
+        # only the named formula, but the formulas' `conflicts_with` makes brew
+        # load the sibling formula too, which is then refused. Trust the whole
+        # (self-owned) tap so sibling loads work.
+        run: brew trust "$TAP"
 
       - name: Build ${{ matrix.formula }} from latest commit (--HEAD)
-        run: brew install --HEAD --build-from-source "${GITHUB_REPOSITORY/homebrew-/}/${{ matrix.formula }}"
+        run: brew install --HEAD --build-from-source "$TAP/${{ matrix.formula }}"
 
       - name: Show what was installed
         # Before `brew test`, so the keg listing is in the logs even when the
@@ -54,4 +60,4 @@ jobs:
         # `brew install` never runs `test do`, so without this the test block
         # is only ever syntax-checked. It also exercises the install wiring
         # (etc persistence symlink, runtime dirs) on the installed keg.
-        run: brew test "${GITHUB_REPOSITORY/homebrew-/}/${{ matrix.formula }}"
+        run: brew test "$TAP/${{ matrix.formula }}"

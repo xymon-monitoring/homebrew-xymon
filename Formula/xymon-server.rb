@@ -15,6 +15,12 @@ class XymonServer < Formula
   depends_on "rrdtool"
   depends_on "fping"
 
+  # Both formulas install the same `xymond` client tools (see the matching
+  # declaration in xymon-client.rb). brew only checks the conflicts declared
+  # by the formula being installed, so the conflict must be declared on both
+  # sides to be enforced in both install orders.
+  conflicts_with "xymon-client", because: "both install overlapping client tools"
+
   # These runtime dirs ship empty; keep Homebrew's Cleaner from pruning them.
   #   server/tmp -- xymond_rrd's cache-control socket and xymonnet's ping work
   #     files. Missing, xymond_rrd dies every cycle ("Cannot bind to
@@ -27,6 +33,11 @@ class XymonServer < Formula
   skip_clean "server/tmp", "client/tmp", "client/logs",
              "server/www/html", "server/www/notes", "server/www/rep",
              "server/www/snap", "server/www/wml"
+  # cgi-bin/cgi-secure hold cgiwrap hardlinked to every CGI name; keg
+  # post-processing was observed dropping some of those hardlinks (e.g.
+  # history.sh, eventlog.sh -> 404s), so keep the cleaner out entirely
+  # rather than re-asserting a hardcoded name list that drifts upstream.
+  skip_clean "cgi-bin", "cgi-secure"
 
   def install
     # configure.server is fully env-var driven (no stdin prompts) and requires
@@ -63,31 +74,18 @@ class XymonServer < Formula
     # INSTALLROOT unset → install directly into XYMONTOPDIR (= prefix).
     system "make", "install", "PKGBUILD=1"
     # `configure --server` lays the server out under prefix/server/ (with a
-    # matching client/ tree); the log dir (XYMONLOGDIR) is outside the keg and
-    # is not created by the install, so make it here.
-    (var/"log/xymon").mkpath
-    # Ensure the skip_clean'd runtime dirs exist in the staged keg (make
-    # install does not reliably create the empty ones).
+    # matching client/ tree). Ensure the skip_clean'd runtime dirs exist in
+    # the staged keg (make install does not reliably create the empty ones).
     [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
     %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
 
     # Persist config in #{etc}/xymon so edits (hosts.cfg, graphs.cfg,
-    # alerts.cfg, xymonserver.cfg ...) survive reinstalls and upgrades.
-    # configure bakes the versioned keg path into the configs, which would
-    # dangle after a version bump, so rewrite those occurrences to the stable
-    # opt_prefix path first (binary-safe: the files are not guaranteed
-    # UTF-8-clean). Installing into #{etc} at install time hands the files to
-    # Homebrew's config protection: user-edited files are never overwritten,
-    # and changed upstream defaults land alongside as *.default. A separate
-    # dir from the client's etc/xymon-client so a machine switched between
-    # the (conflicting) roles does not mix the two config sets.
-    keg_etc = prefix/"server/etc"
-    keg_etc.children.each do |f|
-      f.binwrite(f.binread.gsub(prefix.to_s, opt_prefix.to_s)) if f.file?
-    end
-    (etc/"xymon").install keg_etc.children
-    keg_etc.rmtree
-    (prefix/"server").install_symlink etc/"xymon" => "etc"
+    # alerts.cfg, xymonserver.cfg ...) survive reinstalls and upgrades;
+    # see lib/xymon_etc.rb for how (shared with xymon-client).
+    # Required here, not at the top of the file: postinstall re-loads the
+    # formula from the keg's .brew copy, where the tap's lib/ is absent.
+    require_relative "../lib/xymon_etc"
+    XymonEtc.persist_etc(self, prefix/"server/etc", etc/"xymon")
   end
 
   # Writable var-tree dirs are created here, not in `install`.
@@ -96,37 +94,21 @@ class XymonServer < Formula
   #     reinstall` or version bump would wipe all collected history. Keep the
   #     data in the persistent var tree and symlink the keg path to it so it
   #     survives across (re)installs.
-  # We also re-assert the CGI wrapper hardlinks here: `make install` hardlinks
-  # cgiwrap to every CGISCRIPTS/SECCGISCRIPTS name, but Homebrew's keg
-  # post-processing drops some of them (observed: history.sh, eventlog.sh),
-  # leaving those CGIs returning 404. Recreating them in post_install (after the
-  # keg is finalized) restores the History/Event-log pages and survives reinstalls.
-  CGI_WRAPPERS = %w[
-    history.sh eventlog.sh report.sh reportlog.sh snapshot.sh findhost.sh
-    csvinfo.sh columndoc.sh datepage.sh svcstatus.sh historylog.sh confreport.sh
-    confreport-critical.sh criticalview.sh certreport.sh nongreen.sh hostgraphs.sh
-    ghostlist.sh notifications.sh acknowledgements.sh hostlist.sh topchanges.sh
-    appfeed.sh appfeed-critical.sh showgraph.sh perfdata.sh
-  ].freeze
-  SECURE_CGI_WRAPPERS = %w[
-    acknowledge.sh enadis.sh criticaleditor.sh ackinfo.sh useradm.sh chpasswd.sh
-  ].freeze
-
   def post_install
+    # Repair pass for existing installs: skip_clean keeps the runtime dirs
+    # in a fresh keg, but `brew postinstall` should also restore them if
+    # they were lost on a live system.
+    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
+    %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
+    # XYMONLOGDIR and the launchd service logs live in #{var}/log/xymon,
+    # outside the keg; nothing in the keg creates it (same placement as the
+    # client formula).
+    (var/"log/xymon").mkpath
+
     xymonvar = var/"xymon"
     %w[rrd acks data disabled hist histlogs logs].each { |d| (xymonvar/d).mkpath }
     rm_rf prefix/"data"
     ln_sf xymonvar, prefix/"data"
-
-    cgiwrap = prefix/"server/bin/cgiwrap"
-    if cgiwrap.exist?
-      { "cgi-bin" => CGI_WRAPPERS, "cgi-secure" => SECURE_CGI_WRAPPERS }.each do |dir, names|
-        names.each do |name|
-          target = prefix/dir/name
-          FileUtils.ln(cgiwrap, target) unless target.exist?
-        end
-      end
-    end
 
     # Best-effort: graceful-reload Homebrew's httpd. The CGIs are served out of
     # the versioned keg via the opt symlink; a reinstall swaps the keg under a
@@ -157,8 +139,7 @@ class XymonServer < Formula
   end
 
   def caveats
-    shmseg = `/usr/sbin/sysctl -n kern.sysv.shmseg 2>/dev/null`.to_i
-    msg = <<~EOS
+    <<~EOS
       Xymon server installed under #{opt_prefix}/server.
       Build-only: it does NOT create a xymon user or web-server config. Edit the
       monitored-host list (#{opt_prefix}/server/etc/hosts.cfg) and runtime paths, then:
@@ -193,28 +174,15 @@ class XymonServer < Formula
       then open  http://localhost:8080/xymon/
       (8080 is Homebrew Apache's default; port 80 is privileged - to use it,
        set 'Listen 80' in httpd.conf and run 'sudo brew services start httpd'.)
+
+      xymond needs one SysV shared-memory segment per channel (~9-10 per
+      process); macOS's default kern.sysv.shmseg=8 is too low, and xymond
+      crash-loops with "Could not attach shm / Too many open files" until it
+      is raised. Check with `sysctl kern.sysv.shmseg`; to raise the limits,
+      run this (root), then reboot so they take before shm is first used:
+
+        sudo sh -c 'f=/etc/sysctl.conf; t=$(mktemp); { grep -v "^kern.sysv.shm" "$f" 2>/dev/null; printf "%s\\n" kern.sysv.shmmax=67108864 kern.sysv.shmmni=128 kern.sysv.shmseg=64 kern.sysv.shmall=32768; } > "$t" && mv "$t" "$f"' && sudo reboot
     EOS
-
-    if (1..15).cover?(shmseg)
-      msg += <<~EOS
-
-        WARNING: kern.sysv.shmseg is currently #{shmseg} - too low. xymond needs one
-        SysV shared-memory segment per channel (~9) and will crash-loop with
-        "Could not attach shm / Too many open files" until you raise it. Run this
-        (root), then reboot so the new limits take before shm is first used:
-
-          sudo sh -c 'f=/etc/sysctl.conf; t=$(mktemp); { grep -v "^kern.sysv.shm" "$f" 2>/dev/null; printf "%s\\n" kern.sysv.shmmax=67108864 kern.sysv.shmmni=128 kern.sysv.shmseg=64 kern.sysv.shmall=32768; } > "$t" && mv "$t" "$f"' && sudo reboot
-      EOS
-    else
-      shown = shmseg.zero? ? "unknown" : shmseg.to_s
-      msg += <<~EOS
-
-        (kern.sysv.shmseg = #{shown}.) xymond needs >= ~10 shm segments per process;
-        if it crash-loops with "Could not attach shm", raise the SysV shm limits in
-        /etc/sysctl.conf (kern.sysv.shmseg etc.) and reboot.
-      EOS
-    end
-    msg
   end
 
   test do
@@ -223,5 +191,8 @@ class XymonServer < Formula
     # an existence check alone would also pass on a real, unwired etc/ dir.
     assert_predicate prefix/"server/etc", :symlink?
     assert_predicate prefix/"server/etc/xymonserver.cfg", :exist?
+    # history.sh is one of the cgiwrap hardlinks keg post-processing was
+    # observed dropping; skip_clean "cgi-bin" must keep it in place.
+    assert_predicate prefix/"cgi-bin/history.sh", :exist?
   end
 end
