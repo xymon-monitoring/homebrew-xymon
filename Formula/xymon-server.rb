@@ -15,6 +15,19 @@ class XymonServer < Formula
   depends_on "rrdtool"
   depends_on "fping"
 
+  # These runtime dirs ship empty; keep Homebrew's Cleaner from pruning them.
+  #   server/tmp -- xymond_rrd's cache-control socket and xymonnet's ping work
+  #     files. Missing, xymond_rrd dies every cycle ("Cannot bind to
+  #     cache-control socket"), so no RRDs/graphs, and the conn test fails.
+  #   client/{tmp,logs} -- the bundled local client (the [xymonclient] task in
+  #     tasks.cfg self-monitors the server host). Without client/tmp the client
+  #     can't write msg.localhost.txt, so the host reports no cpu/memory/disk.
+  #   server/www/{html,notes,rep,snap,wml} -- xymongen logs "Cannot read links
+  #     in directory .../www/notes" and skips host notes when they are missing.
+  skip_clean "server/tmp", "client/tmp", "client/logs",
+             "server/www/html", "server/www/notes", "server/www/rep",
+             "server/www/snap", "server/www/wml"
+
   def install
     # configure.server is fully env-var driven (no stdin prompts) and requires
     # XYMONUSER to be a real OS user, so build as the invoking user.
@@ -53,16 +66,31 @@ class XymonServer < Formula
     # matching client/ tree); the log dir (XYMONLOGDIR) is outside the keg and
     # is not created by the install, so make it here.
     (var/"log/xymon").mkpath
+    # Ensure the skip_clean'd runtime dirs exist in the staged keg (make
+    # install does not reliably create the empty ones).
+    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
+    %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
+
+    # Persist config in #{etc}/xymon so edits (hosts.cfg, graphs.cfg,
+    # alerts.cfg, xymonserver.cfg ...) survive reinstalls and upgrades.
+    # configure bakes the versioned keg path into the configs, which would
+    # dangle after a version bump, so rewrite those occurrences to the stable
+    # opt_prefix path first (binary-safe: the files are not guaranteed
+    # UTF-8-clean). Installing into #{etc} at install time hands the files to
+    # Homebrew's config protection: user-edited files are never overwritten,
+    # and changed upstream defaults land alongside as *.default. A separate
+    # dir from the client's etc/xymon-client so a machine switched between
+    # the (conflicting) roles does not mix the two config sets.
+    keg_etc = prefix/"server/etc"
+    keg_etc.children.each do |f|
+      f.binwrite(f.binread.gsub(prefix.to_s, opt_prefix.to_s)) if f.file?
+    end
+    (etc/"xymon").install keg_etc.children
+    keg_etc.rmtree
+    (prefix/"server").install_symlink etc/"xymon" => "etc"
   end
 
-  # Writable runtime dirs are created here, not in `install`: the build sandbox
-  # forbids writing under var, and Homebrew's Cleaner strips empty directories
-  # from the staged keg before it is moved into the Cellar. post_install runs
-  # after the keg is finalized, so what it creates persists.
-  #   server/tmp = XYMONTMP -- xymond_rrd's cache-control socket and xymonnet's
-  #     ping work files. Missing, xymond_rrd dies every cycle ("Cannot bind to
-  #     cache-control socket (No such file or directory)"), so no RRDs/graphs are
-  #     written, and the conn (ping) test fails creating .../tmp/ping-stdout.
+  # Writable var-tree dirs are created here, not in `install`.
   #   #{var}/xymon = XYMONVAR -- RRDs, history, acks, disabled flags, status
   #     logs. XYMONVAR bakes as prefix/data (inside the keg), so a `brew
   #     reinstall` or version bump would wipe all collected history. Keep the
@@ -85,36 +113,10 @@ class XymonServer < Formula
   ].freeze
 
   def post_install
-    # Empty runtime dirs that Homebrew's Cleaner prunes from the keg.
-    # server/tmp: xymond_rrd's cache-control socket + xymonnet ping work files.
-    # client/{tmp,logs}: the bundled local client (the [xymonclient] task in
-    #   tasks.cfg self-monitors the server host). Without client/tmp the client
-    #   can't write msg.localhost.txt, so the host reports no cpu/memory/disk.
-    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
-    # www/{html,notes,rep,snap,wml} ship empty, so Homebrew's Cleaner prunes
-    # them from the keg. xymongen then logs "Cannot read links in directory
-    # .../www/notes" and skips host notes; recreate them.
-    %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
     xymonvar = var/"xymon"
     %w[rrd acks data disabled hist histlogs logs].each { |d| (xymonvar/d).mkpath }
     rm_rf prefix/"data"
     ln_sf xymonvar, prefix/"data"
-
-    # Persist config in Homebrew's etc so edits (hosts.cfg, graphs.cfg,
-    # alerts.cfg, xymonserver.cfg ...) survive reinstalls. configure bakes the
-    # versioned keg path into the configs, which would dangle after a version
-    # bump, so rewrite those occurrences to the stable opt_prefix path first.
-    # Seed each file once and symlink the keg's etc to the persistent copy;
-    # never overwrite a file the user has already edited.
-    src_etc = prefix/"server/etc"
-    dst_etc = etc/"xymon"
-    dst_etc.mkpath
-    src_etc.children.select(&:file?).each do |f|
-      dst = dst_etc/f.basename
-      dst.write(f.read.gsub(prefix.to_s, opt_prefix.to_s)) unless dst.exist?
-    end
-    rm_rf src_etc
-    ln_sf dst_etc, src_etc
 
     cgiwrap = prefix/"server/bin/cgiwrap"
     if cgiwrap.exist?
@@ -161,6 +163,10 @@ class XymonServer < Formula
       Build-only: it does NOT create a xymon user or web-server config. Edit the
       monitored-host list (#{opt_prefix}/server/etc/hosts.cfg) and runtime paths, then:
         brew services start xymon-server
+
+      Config lives in #{etc}/xymon (the keg's server/etc is a symlink to it),
+      so your edits survive reinstalls and upgrades; changed upstream defaults
+      are written alongside as *.default files.
 
       Binaries are under #{opt_prefix}/server/bin (not linked into PATH); run e.g.
         #{opt_prefix}/server/bin/xymon 127.0.0.1 "ping"
@@ -213,5 +219,9 @@ class XymonServer < Formula
 
   test do
     assert_predicate prefix/"server/bin/xymond", :exist?
+    # server/etc must BE a symlink into #{etc}/xymon (made at install time):
+    # an existence check alone would also pass on a real, unwired etc/ dir.
+    assert_predicate prefix/"server/etc", :symlink?
+    assert_predicate prefix/"server/etc/xymonserver.cfg", :exist?
   end
 end
