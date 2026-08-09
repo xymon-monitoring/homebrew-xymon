@@ -28,9 +28,14 @@ Each formula installs the binaries under the Homebrew prefix and provides a
 launchd `service` (`brew services start …`). They do **not** create a `xymon`
 system user or configure a web server — host configuration (`etc/hosts.cfg`,
 the reporting server in `etc/xymonclient.cfg`, web CGIs) is left to the admin.
+Config persists in `$(brew --prefix)/etc/xymon` (server) and
+`$(brew --prefix)/etc/xymon-client` (client) — the keg's `etc/` is a symlink to
+it — so edits survive reinstalls and upgrades; changed upstream defaults are
+written alongside as `*.default` files.
 
-> CI verifies the **build**. The running service still wants a confirmation pass
-> on a real Mac (start it, check it stays up and reports).
+> CI verifies the **build** and runs each formula's `test` block. The running
+> service still wants a confirmation pass on a real Mac (start it, check it
+> stays up and reports).
 
 ## Always track the latest commit
 
@@ -39,9 +44,11 @@ the **newest commit**. HEAD installs don't auto-detect new commits — force a
 re-fetch to pull a fresh one:
 
 ```sh
+# upgrades only this formula (and its outdated dependencies), nothing else:
 brew upgrade --fetch-HEAD xymon-monitoring/xymon/xymon-server
-# or rebuild from scratch at the current tip:
-brew reinstall --HEAD xymon-monitoring/xymon/xymon-server
+# or rebuild from scratch at the current tip (reinstall takes no --HEAD flag;
+# it reuses the install receipt, which already records --HEAD):
+brew reinstall xymon-monitoring/xymon/xymon-server
 ```
 
 ## Build a specific branch, commit, or pull request
@@ -86,7 +93,7 @@ Notes:
   that branch's tip each time you re-fetch.
 - The edited tap is a dirty git checkout, so `brew update` warns until you
   revert it (the `checkout -- .` above).
-- `brew reinstall --HEAD` is rejected by some Homebrew versions; plain
+- `brew reinstall` does not accept `--HEAD` (invalid option); plain
   `brew reinstall` reuses the install receipt (which is already `--HEAD`), so it
   rebuilds from `head` regardless.
 
@@ -101,8 +108,10 @@ block in `Formula/xymon-server.rb` shows exactly what to add. Then plain
 ## How the build works
 
 Xymon's `configure` is interactive; the formulae drive it non-interactively by
-exporting the `XYMON*`/`ENABLE*`/`USEXYMONPING` answers as env vars and redirecting
-stdin from `/dev/null`, then `make install PKGBUILD=1` (which skips the
-`chown`/user-creation a system install would do) into the Homebrew prefix.
+exporting the answers (`XYMON*`, `ENABLE*`, `CONFTYPE`, `USEXYMONPING`, …) as
+env vars — the server's `configure` additionally reads stdin from `/dev/null`
+so any stray prompt falls back to its default — then `make install PKGBUILD=1`
+(which skips the `chown`/user-creation a system install would do) into the
+Homebrew prefix.
 
 Tracked upstream alongside the Debian (#28) and FreeBSD (#103) packaging audits.
