@@ -1,3 +1,5 @@
+require_relative "../lib/xymon_etc"
+
 class XymonClient < Formula
   desc "Xymon network and systems monitor (client only)"
   homepage "https://xymon.com/"
@@ -30,7 +32,10 @@ class XymonClient < Formula
     ENV["XYMONHOSTIP"]   = "127.0.0.1"
     ENV["XYMSRV"]        = "127.0.0.1"
 
-    system "./configure", "--client"
+    # Redirect stdin from /dev/null (same guard as the server build) so any
+    # stray prompt gets EOF and falls back to its default instead of
+    # blocking a non-interactive build until the CI timeout.
+    system "/bin/sh", "-c", "exec ./configure --client </dev/null"
     system "make"
     # The client install targets cp into $XYMONHOME/{bin,etc,...} without
     # creating them first; Homebrew only makes `prefix`, so pre-create them.
@@ -39,27 +44,18 @@ class XymonClient < Formula
 
     # Persist config in #{etc}/xymon-client so edits (XYMSRV in
     # xymonclient.cfg, clientlaunch.cfg tasks ...) survive reinstalls and
-    # upgrades. configure bakes the versioned keg path into the configs,
-    # which would dangle after a version bump, so rewrite those occurrences
-    # to the stable opt_prefix path first (binary-safe: the files are not
-    # guaranteed UTF-8-clean). Installing into #{etc} at install time hands
-    # the files to Homebrew's config protection: user-edited files are never
-    # overwritten, and changed upstream defaults land alongside as *.default.
-    # A separate dir from the server's etc/xymon so a machine switched
-    # between the (conflicting) roles does not mix the two config sets.
-    keg_etc = prefix/"etc"
-    keg_etc.children.each do |f|
-      f.binwrite(f.binread.gsub(prefix.to_s, opt_prefix.to_s)) if f.file?
-    end
-    (etc/"xymon-client").install keg_etc.children
-    keg_etc.rmtree
-    prefix.install_symlink etc/"xymon-client" => "etc"
+    # upgrades; see lib/xymon_etc.rb for how (shared with xymon-server).
+    XymonEtc.persist_etc(self, prefix/"etc", etc/"xymon-client")
   end
 
   def post_install
+    # Repair pass for existing installs: skip_clean keeps ext/, logs/ and
+    # tmp/ in a fresh keg, but `brew postinstall` should also restore them
+    # if they were lost on a live system.
+    %w[ext logs tmp].each { |d| (prefix/d).mkpath }
     # The launchd service logs to #{var}/log/xymon; nothing else creates that
-    # dir on a client-only machine (the server formula makes it in install),
-    # and launchd will not create missing log directories itself.
+    # dir on a client-only machine, and launchd will not create missing log
+    # directories itself.
     (var/"log/xymon").mkpath
   end
 
