@@ -46,4 +46,12 @@ jobs:
         run: brew install --HEAD --build-from-source "${GITHUB_REPOSITORY/homebrew-/}/${{ matrix.formula }}"
 
       - name: Show what was installed
+        # Before `brew test`, so the keg listing is in the logs even when the
+        # test block fails - that listing is what you need to debug it.
         run: brew list --verbose "${{ matrix.formula }}" || true
+
+      - name: Run the formula's test block
+        # `brew install` never runs `test do`, so without this the test block
+        # is only ever syntax-checked. It also exercises the install wiring
+        # (etc persistence symlink, runtime dirs) on the installed keg.
+        run: brew test "${GITHUB_REPOSITORY/homebrew-/}/${{ matrix.formula }}"
