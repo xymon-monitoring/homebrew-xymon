@@ -3,16 +3,78 @@
 A [Homebrew](https://brew.sh/) tap for [Xymon](https://xymon.com/) on macOS —
 **server** and **client**.
 
+## Quick start
+
+**1. Install** — server *or* client; they conflict, so pick one per machine
+(the server monitors itself with a bundled client):
+
 ```sh
 brew tap xymon-monitoring/xymon
 brew install --HEAD xymon-monitoring/xymon/xymon-server   # server
 brew install --HEAD xymon-monitoring/xymon/xymon-client   # client only
 ```
 
-Run under launchd:
+**2. Configure** — config lives under `$(brew --prefix)/etc` and survives
+reinstalls and upgrades:
 
 ```sh
-brew services start xymon-server     # or: xymon-client
+# client: set XYMSRV to your Xymon server's address
+$EDITOR "$(brew --prefix)/etc/xymon-client/xymonclient.cfg"
+# server: list the hosts to monitor
+$EDITOR "$(brew --prefix)/etc/xymon/hosts.cfg"
+```
+
+**3. Start** — `brew services start` launches the service now **and**
+registers it with launchd so it starts automatically at every login and is
+restarted if it dies:
+
+```sh
+brew services start xymon-server      # or: xymon-client
+```
+
+After a reboot the service comes back when you log in. For a headless Mac
+that must monitor without anyone logging in, either enable automatic login
+(System Settings → Users & Groups) or register it as a system-wide daemon
+with `sudo brew services start xymon-server` (it then runs as root, and the
+files it writes under `$(brew --prefix)/var` become root-owned).
+
+Day-to-day service management:
+
+```sh
+brew services info xymon-server       # is it running?
+brew services restart xymon-server    # stop + start again
+brew services stop xymon-server       # shut down now and remove the auto-start
+brew services run xymon-server        # run now only, without auto-start
+```
+
+**4. Upgrade** — pulls and builds the latest upstream commit, keeping your
+config; the service keeps running the old binaries until restarted, so
+always restart after:
+
+```sh
+brew upgrade --fetch-HEAD xymon-monitoring/xymon/xymon-server
+brew services restart xymon-server
+```
+
+(More rebuild options in
+[Always track the latest commit](#always-track-the-latest-commit) below.)
+
+**5. Uninstall**:
+
+```sh
+brew services stop xymon-server       # or: xymon-client
+brew uninstall xymon-server
+```
+
+`brew uninstall` keeps your data so a reinstall picks up where you left off.
+For a complete removal, also delete (server paths shown; the client only has
+`etc/xymon-client` and the logs):
+
+```sh
+rm -rf "$(brew --prefix)/etc/xymon"        # config     (client: etc/xymon-client)
+rm -rf "$(brew --prefix)/var/xymon"        # RRDs, history, collected data
+rm -rf "$(brew --prefix)/var/log/xymon"    # logs
+brew untap xymon-monitoring/xymon          # drop the tap itself
 ```
 
 ## Status
