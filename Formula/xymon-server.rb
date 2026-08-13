@@ -106,7 +106,7 @@ class XymonServer < Formula
     (var/"log/xymon").mkpath
 
     xymonvar = var/"xymon"
-    %w[rrd acks data disabled hist histlogs logs].each { |d| (xymonvar/d).mkpath }
+    %w[rrd acks data disabled hist histlogs hostdata logs].each { |d| (xymonvar/d).mkpath }
     rm_rf prefix/"data"
     ln_sf xymonvar, prefix/"data"
 
