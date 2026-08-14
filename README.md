@@ -102,7 +102,7 @@ until a client reports.
 > CI verifies the **build** and runs each formula's `test` block, on a fresh
 > install and again after replacing the keg. A live pass on a real Mac (2026-08)
 > found three things CI could not: two `cgiwrap` hard links missing after an
-> upgrade, `XYMONTMP` inside the keg discarding xymond's checkpoint on every
+> upgrade (a parallel-make ordering race upstream), `XYMONTMP` inside the keg discarding xymond's checkpoint on every
 > install, and — upstream — an `install-cgi` loop that reported success while
 > skipping links. All three are fixed; the run-time pass is worth repeating
 > after any change to the install layout.
