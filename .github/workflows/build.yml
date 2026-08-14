@@ -63,10 +63,11 @@ jobs:
         run: brew test "$TAP/${{ matrix.formula }}"
 
       - name: Replace the keg, then clean up
-        # The fresh install above is not the path users take. A reinstall or an
-        # upgrade puts a new keg beside an existing one and then removes the
-        # old one, and two cgiwrap hard links (history.sh, eventlog.sh) were
-        # found missing after exactly that, while this job stayed green.
+        # A second pass over an existing keg, which a fresh install never
+        # exercises. Bisected on the affected machine, this does NOT reproduce
+        # the missing cgiwrap links - only a real `brew upgrade` between two
+        # upstream revisions did - so it is here as coverage of the replace
+        # path, not as a regression test for that bug.
         run: |
           brew reinstall --build-from-source "$TAP/${{ matrix.formula }}"
           brew cleanup "${{ matrix.formula }}"

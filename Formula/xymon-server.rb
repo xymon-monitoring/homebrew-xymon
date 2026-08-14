@@ -111,11 +111,11 @@ class XymonServer < Formula
     ln_sf xymonvar, prefix/"data"
 
     # Re-link the CGIs. Each name in cgi-bin/cgi-secure is a hard link to
-    # server/bin/cgiwrap, made by the tree's install-cgi rule. On an upgraded
-    # install two of them (history.sh, eventlog.sh) were found missing, so
-    # history and eventlog 404'd; a fresh install has them, which is what the
-    # test block and CI cover. Rather than chase which keg stage drops them,
-    # restore any that are absent -- ln is a no-op when the link is there.
+    # server/bin/cgiwrap, made by the tree's install-cgi rule, whose loop
+    # reported success while skipping links (fixed upstream). Two of them
+    # (history.sh, eventlog.sh) went missing from an upgraded keg and their
+    # pages 404'd. This stays as the belt: it costs nothing, and it repairs
+    # installs made before the upstream fix.
     cgiwrap = prefix/"server/bin/cgiwrap"
     if cgiwrap.exist?
       {
