@@ -123,11 +123,13 @@ class XymonServer < Formula
     ln_sf xymontmp, prefix/"server/tmp"
 
     # Re-link the CGIs. Each name in cgi-bin/cgi-secure is a hard link to
-    # server/bin/cgiwrap, made by the tree's install-cgi rule, whose loop
-    # reported success while skipping links (fixed upstream). Two of them
-    # (history.sh, eventlog.sh) went missing from an upgraded keg and their
-    # pages 404'd. This stays as the belt: it costs nothing, and it repairs
-    # installs made before the upstream fix.
+    # server/bin/cgiwrap. install-cgi was not ordered after install-bin, so a
+    # parallel make could start linking before cgiwrap had been copied: the
+    # first names failed for want of the source, the rest succeeded once it
+    # appeared, and the loop reported success either way. history.sh and
+    # eventlog.sh - the first two - were missing from an upgraded keg and their
+    # pages 404'd. Ordered and made fatal upstream; this stays as the belt for
+    # installs made before that fix.
     cgiwrap = prefix/"server/bin/cgiwrap"
     if cgiwrap.exist?
       {
