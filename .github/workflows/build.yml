@@ -61,3 +61,15 @@ jobs:
         # is only ever syntax-checked. It also exercises the install wiring
         # (etc persistence symlink, runtime dirs) on the installed keg.
         run: brew test "$TAP/${{ matrix.formula }}"
+
+      - name: Replace the keg, then clean up
+        # The fresh install above is not the path users take. A reinstall or an
+        # upgrade puts a new keg beside an existing one and then removes the
+        # old one, and two cgiwrap hard links (history.sh, eventlog.sh) were
+        # found missing after exactly that, while this job stayed green.
+        run: |
+          brew reinstall --build-from-source "$TAP/${{ matrix.formula }}"
+          brew cleanup "${{ matrix.formula }}"
+
+      - name: Run the test block again on the replaced keg
+        run: brew test "$TAP/${{ matrix.formula }}"

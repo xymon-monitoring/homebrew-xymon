@@ -110,6 +110,30 @@ class XymonServer < Formula
     rm_rf prefix/"data"
     ln_sf xymonvar, prefix/"data"
 
+    # Re-link the CGIs. Each name in cgi-bin/cgi-secure is a hard link to
+    # server/bin/cgiwrap, made by the tree's install-cgi rule. On an upgraded
+    # install two of them (history.sh, eventlog.sh) were found missing, so
+    # history and eventlog 404'd; a fresh install has them, which is what the
+    # test block and CI cover. Rather than chase which keg stage drops them,
+    # restore any that are absent -- ln is a no-op when the link is there.
+    cgiwrap = prefix/"server/bin/cgiwrap"
+    if cgiwrap.exist?
+      {
+        prefix/"cgi-bin"    => %w[history.sh eventlog.sh report.sh reportlog.sh snapshot.sh
+                                  findhost.sh csvinfo.sh columndoc.sh datepage.sh svcstatus.sh
+                                  historylog.sh confreport.sh confreport-critical.sh
+                                  criticalview.sh certreport.sh nongreen.sh hostgraphs.sh
+                                  ghostlist.sh notifications.sh acknowledgements.sh hostlist.sh
+                                  topchanges.sh appfeed.sh appfeed-critical.sh showgraph.sh
+                                  perfdata.sh],
+        prefix/"cgi-secure" => %w[acknowledge.sh enadis.sh criticaleditor.sh ackinfo.sh
+                                  useradm.sh chpasswd.sh],
+      }.each do |dir, names|
+        dir.mkpath
+        names.each { |n| File.link(cgiwrap, dir/n) unless (dir/n).exist? }
+      end
+    end
+
     # Best-effort: graceful-reload Homebrew's httpd. The CGIs are served out of
     # the versioned keg via the opt symlink; a reinstall swaps the keg under a
     # running httpd, which keeps exec'ing the old (now-deleted) path until it is
@@ -191,8 +215,11 @@ class XymonServer < Formula
     # an existence check alone would also pass on a real, unwired etc/ dir.
     assert_predicate prefix/"server/etc", :symlink?
     assert_predicate prefix/"server/etc/xymonserver.cfg", :exist?
-    # history.sh is one of the cgiwrap hardlinks keg post-processing was
-    # observed dropping; skip_clean "cgi-bin" must keep it in place.
+    # The cgiwrap hard links keg post-processing was observed dropping.
+    # post_install restores any that are missing, so these must be there
+    # after an upgrade as well as a fresh install.
     assert_predicate prefix/"cgi-bin/history.sh", :exist?
+    assert_predicate prefix/"cgi-bin/eventlog.sh", :exist?
+    assert_predicate prefix/"cgi-secure/useradm.sh", :exist?
   end
 end
