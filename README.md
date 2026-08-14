@@ -142,19 +142,28 @@ head "https://github.com/<fork>/xymon.git", branch: "<feature-branch>"
 head "https://github.com/<fork>/xymon.git", revision: "<full-40-char-sha>"
 ```
 
-Then rebuild. `--HEAD` caches the git clone, so to guarantee you get the
-branch's current tip, clear that cache first:
+Then rebuild. Stop the service first: rebuilding swaps the keg under a running
+server. And `--HEAD` caches the git clone, so clear that cache or you may get a
+stale tip:
 
 ```sh
+brew services stop xymon-server
 rm -rf "$(brew --cache)"/*xymon-server*
 brew reinstall xymon-monitoring/xymon/xymon-server
+brew services start xymon-server
 ```
 
-When done, restore the tap to its pristine `main` and rebuild:
+When done, restore the tap to its pristine `main` and rebuild. Clear the cache
+here too — it is keyed by formula, not by repository, so a leftover clone of
+the branch can be reused for what should be a `main` build, and only the
+installed version string would show it:
 
 ```sh
+brew services stop xymon-server
 git -C "$(brew --repository xymon-monitoring/xymon)" checkout -- .
+rm -rf "$(brew --cache)"/*xymon-server*
 brew reinstall xymon-monitoring/xymon/xymon-server
+brew services start xymon-server
 ```
 
 Notes:
