@@ -22,9 +22,10 @@ class XymonServer < Formula
   conflicts_with "xymon-client", because: "both install overlapping client tools"
 
   # These runtime dirs ship empty; keep Homebrew's Cleaner from pruning them.
-  #   server/tmp -- xymond_rrd's cache-control socket and xymonnet's ping work
-  #     files. Missing, xymond_rrd dies every cycle ("Cannot bind to
-  #     cache-control socket"), so no RRDs/graphs, and the conn test fails.
+  #   server/tmp -- redirected to the var tree in post_install (it holds
+  #     xymond's checkpoint), but the keg still needs the path to exist so the
+  #     symlink has something to replace. Missing entirely, xymond_rrd dies
+  #     every cycle ("Cannot bind to cache-control socket").
   #   client/{tmp,logs} -- the bundled local client (the [xymonclient] task in
   #     tasks.cfg self-monitors the server host). Without client/tmp the client
   #     can't write msg.localhost.txt, so the host reports no cpu/memory/disk.
@@ -97,8 +98,9 @@ class XymonServer < Formula
   def post_install
     # Repair pass for existing installs: skip_clean keeps the runtime dirs
     # in a fresh keg, but `brew postinstall` should also restore them if
-    # they were lost on a live system.
-    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
+    # they were lost on a live system. server/tmp is handled below, where it
+    # is redirected out of the keg.
+    [prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
     %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
     # XYMONLOGDIR and the launchd service logs live in #{var}/log/xymon,
     # outside the keg; nothing in the keg creates it (same placement as the
@@ -109,6 +111,42 @@ class XymonServer < Formula
     %w[rrd acks data disabled hist histlogs hostdata logs].each { |d| (xymonvar/d).mkpath }
     rm_rf prefix/"data"
     ln_sf xymonvar, prefix/"data"
+
+    # XYMONTMP the same way. It holds xymond's checkpoint, so leaving it inside
+    # the keg discards the whole status board on every install: xymond restarts
+    # with nothing, xymongen finds an empty board and regenerates no pages, and
+    # the web UI stays blank until a client reports - five minutes of nothing,
+    # plus the flap history and any live acknowledgements.
+    xymontmp = var/"xymon/tmp"
+    xymontmp.mkpath
+    rm_rf prefix/"server/tmp"
+    ln_sf xymontmp, prefix/"server/tmp"
+
+    # Re-link the CGIs. Each name in cgi-bin/cgi-secure is a hard link to
+    # server/bin/cgiwrap. install-cgi was not ordered after install-bin, so a
+    # parallel make could start linking before cgiwrap had been copied: the
+    # first names failed for want of the source, the rest succeeded once it
+    # appeared, and the loop reported success either way. history.sh and
+    # eventlog.sh - the first two - were missing from an upgraded keg and their
+    # pages 404'd. Ordered and made fatal upstream; this stays as the belt for
+    # installs made before that fix.
+    cgiwrap = prefix/"server/bin/cgiwrap"
+    if cgiwrap.exist?
+      {
+        prefix/"cgi-bin"    => %w[history.sh eventlog.sh report.sh reportlog.sh snapshot.sh
+                                  findhost.sh csvinfo.sh columndoc.sh datepage.sh svcstatus.sh
+                                  historylog.sh confreport.sh confreport-critical.sh
+                                  criticalview.sh certreport.sh nongreen.sh hostgraphs.sh
+                                  ghostlist.sh notifications.sh acknowledgements.sh hostlist.sh
+                                  topchanges.sh appfeed.sh appfeed-critical.sh showgraph.sh
+                                  perfdata.sh],
+        prefix/"cgi-secure" => %w[acknowledge.sh enadis.sh criticaleditor.sh ackinfo.sh
+                                  useradm.sh chpasswd.sh],
+      }.each do |dir, names|
+        dir.mkpath
+        names.each { |n| File.link(cgiwrap, dir/n) unless (dir/n).exist? }
+      end
+    end
 
     # Best-effort: graceful-reload Homebrew's httpd. The CGIs are served out of
     # the versioned keg via the opt symlink; a reinstall swaps the keg under a
@@ -190,9 +228,15 @@ class XymonServer < Formula
     # server/etc must BE a symlink into #{etc}/xymon (made at install time):
     # an existence check alone would also pass on a real, unwired etc/ dir.
     assert_predicate prefix/"server/etc", :symlink?
+    # XYMONTMP must live outside the keg, or every install throws away
+    # xymond's checkpoint and the web UI is blank until a client reports.
+    assert_predicate prefix/"server/tmp", :symlink?
     assert_predicate prefix/"server/etc/xymonserver.cfg", :exist?
-    # history.sh is one of the cgiwrap hardlinks keg post-processing was
-    # observed dropping; skip_clean "cgi-bin" must keep it in place.
+    # The cgiwrap hard links keg post-processing was observed dropping.
+    # post_install restores any that are missing, so these must be there
+    # after an upgrade as well as a fresh install.
     assert_predicate prefix/"cgi-bin/history.sh", :exist?
+    assert_predicate prefix/"cgi-bin/eventlog.sh", :exist?
+    assert_predicate prefix/"cgi-secure/useradm.sh", :exist?
   end
 end

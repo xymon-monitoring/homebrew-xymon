@@ -93,11 +93,19 @@ the reporting server in `etc/xymonclient.cfg`, web CGIs) is left to the admin.
 Config persists in `$(brew --prefix)/etc/xymon` (server) and
 `$(brew --prefix)/etc/xymon-client` (client) — the keg's `etc/` is a symlink to
 it — so edits survive reinstalls and upgrades; changed upstream defaults are
-written alongside as `*.default` files.
+written alongside as `*.default` files. The server's runtime state does too:
+`XYMONVAR` and `XYMONTMP` are symlinks into `$(brew --prefix)/var/xymon`, so an
+install keeps the RRDs, the history and xymond's checkpoint. Without the last
+of those, xymond restarts with an empty status board and the web UI stays blank
+until a client reports.
 
-> CI verifies the **build** and runs each formula's `test` block. The running
-> service still wants a confirmation pass on a real Mac (start it, check it
-> stays up and reports).
+> CI verifies the **build** and runs each formula's `test` block, on a fresh
+> install and again after replacing the keg. A live pass on a real Mac (2026-08)
+> found three things CI could not: two `cgiwrap` hard links missing after an
+> upgrade (a parallel-make ordering race upstream), `XYMONTMP` inside the keg discarding xymond's checkpoint on every
+> install, and — upstream — an `install-cgi` loop that reported success while
+> skipping links. All three are fixed; the run-time pass is worth repeating
+> after any change to the install layout.
 
 ## Always track the latest commit
 
@@ -134,19 +142,28 @@ head "https://github.com/<fork>/xymon.git", branch: "<feature-branch>"
 head "https://github.com/<fork>/xymon.git", revision: "<full-40-char-sha>"
 ```
 
-Then rebuild. `--HEAD` caches the git clone, so to guarantee you get the
-branch's current tip, clear that cache first:
+Then rebuild. Stop the service first: rebuilding swaps the keg under a running
+server. And `--HEAD` caches the git clone, so clear that cache or you may get a
+stale tip:
 
 ```sh
+brew services stop xymon-server
 rm -rf "$(brew --cache)"/*xymon-server*
 brew reinstall xymon-monitoring/xymon/xymon-server
+brew services start xymon-server
 ```
 
-When done, restore the tap to its pristine `main` and rebuild:
+When done, restore the tap to its pristine `main` and rebuild. Clear the cache
+here too — it is keyed by formula, not by repository, so a leftover clone of
+the branch can be reused for what should be a `main` build, and only the
+installed version string would show it:
 
 ```sh
+brew services stop xymon-server
 git -C "$(brew --repository xymon-monitoring/xymon)" checkout -- .
+rm -rf "$(brew --cache)"/*xymon-server*
 brew reinstall xymon-monitoring/xymon/xymon-server
+brew services start xymon-server
 ```
 
 Notes:

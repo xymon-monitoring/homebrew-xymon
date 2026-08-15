@@ -61,3 +61,16 @@ jobs:
         # is only ever syntax-checked. It also exercises the install wiring
         # (etc persistence symlink, runtime dirs) on the installed keg.
         run: brew test "$TAP/${{ matrix.formula }}"
+
+      - name: Replace the keg, then clean up
+        # A second pass over an existing keg, which a fresh install never
+        # exercises. Bisected on the affected machine, this does NOT reproduce
+        # the missing cgiwrap links - only a real `brew upgrade` between two
+        # upstream revisions did - so it is here as coverage of the replace
+        # path, not as a regression test for that bug.
+        run: |
+          brew reinstall --build-from-source "$TAP/${{ matrix.formula }}"
+          brew cleanup "${{ matrix.formula }}"
+
+      - name: Run the test block again on the replaced keg
+        run: brew test "$TAP/${{ matrix.formula }}"
