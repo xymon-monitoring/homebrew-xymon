@@ -155,8 +155,7 @@ brew services start xymon-server
 
 When done, restore the tap to its pristine `main` and rebuild. Clear the cache
 here too — it is keyed by formula, not by repository, so a leftover clone of
-the branch can be reused for what should be a `main` build, and only the
-installed version string would show it:
+the branch can be reused for what should be a `main` build:
 
 ```sh
 brew services stop xymon-server
@@ -171,7 +170,20 @@ Notes:
 - A `revision:` build is reproducible (exact commit); a `branch:` build follows
   that branch's tip each time you re-fetch.
 - The edited tap is a dirty git checkout, so `brew update` warns until you
-  revert it (the `checkout -- .` above).
+  revert it (the `checkout -- .` above). That warning is the only signal you
+  get, and it arrives amid Homebrew's other notices — nothing downstream says
+  which source a keg came from. The installed version is `HEAD-<short-sha>`
+  whatever repo and branch produced it, so a fork build and a `main` build are
+  indistinguishable from `brew list --versions`. Before trusting an install,
+  check what the formula actually points at:
+
+  ```sh
+  grep -n '^  head ' "$(brew --repo xymon-monitoring/xymon)/Formula/xymon-server.rb"
+  ```
+
+  It should name `xymon-monitoring/xymon` and `main`. A left-over edit here is
+  silent and sticky: every later `brew reinstall` keeps building the same fork
+  branch, so upstream fixes never arrive no matter how often you rebuild.
 - `brew reinstall` does not accept `--HEAD` (invalid option); plain
   `brew reinstall` reuses the install receipt (which is already `--HEAD`), so it
   rebuilds from `head` regardless.
