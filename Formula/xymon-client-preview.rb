@@ -95,6 +95,14 @@ class XymonClientPreview < Formula
 
       Upgrading from a revision that kept config inside the keg? Those edits
       were not migrated - re-set XYMSRV in #{etc}/xymon-client-preview/xymonclient.cfg.
+
+      The netstat graph shows no TCP data on macOS until a kernel setting is
+      changed: net.inet.tcp.disable_access_to_stats=1, the default, makes
+      netstat -s report every TCP counter as 0 (UDP is unaffected). To get the
+      counters, run this (root); the second line keeps it across reboots:
+
+        sudo sysctl net.inet.tcp.disable_access_to_stats=0
+        echo net.inet.tcp.disable_access_to_stats=0 | sudo tee -a /etc/sysctl.conf
     EOS
   end
 
