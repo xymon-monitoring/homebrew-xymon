@@ -77,6 +77,32 @@ rm -rf "$(brew --prefix)/var/log/xymon"    # logs
 brew untap xymon-monitoring/xymon          # drop the tap itself
 ```
 
+## Try the next release (preview)
+
+`xymon-server-preview` and `xymon-client-preview` install the latest preview of
+the next Xymon release: `main` plus the pull requests left for that release,
+from [xymon-experimental](https://github.com/xymon-monitoring/xymon-experimental/releases).
+Not all of them are reviewed yet: for testing, not production.
+
+```sh
+brew install xymon-monitoring/xymon/xymon-server-preview   # or: xymon-client-preview
+brew services start xymon-server-preview
+```
+
+- **No `--HEAD`, no milestone to choose.** They follow the next release on
+  their own: a new preview of it, then the next milestone's once it is released.
+  `brew upgrade` (then `brew services restart`) takes you to the newest.
+- **Config, data and logs of their own** (`etc/xymon-preview`,
+  `etc/xymon-client-preview`, `var/xymon-preview`, `var/log/xymon-preview`),
+  so a normal install's are left alone. Uninstall one to install the other:
+  they conflict, like server and client.
+- **Found a problem, or that it works?** Say so on the pull request it is
+  about, naming the preview (the page footers show it, e.g. `4.3.31-preview1`).
+
+They are generated from the normal formulae by `scripts/gen-preview.rb`; edit
+those, not the preview files. A daily workflow moves them to a new preview,
+after building and testing both.
+
 ## Status
 
 Both formulae **build and install on `macos-latest` in CI** (`--HEAD`, latest

@@ -1,6 +1,7 @@
-name: build (macOS, HEAD)
+name: build (macOS)
 
-# Compiles the formulae from the latest upstream commit on a real macOS runner.
+# Compiles the formulae on a real macOS runner: the normal ones from the latest
+# upstream commit (--HEAD), the preview ones from their pinned tarball.
 # - push / pull_request: verify a formula edit still builds.
 # - weekly cron: rebuild the current main tip, so a breaking upstream commit
 #   surfaces here rather than at a user's `brew install --HEAD`.
@@ -23,9 +24,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # xymon (server) and xymon-client conflict, so build each in its own
-        # runner rather than installing both side by side.
-        formula: [xymon-server, xymon-client]
+        # The formulae conflict, so build each in its own runner rather than
+        # installing them side by side.
+        formula: [xymon-server, xymon-client, xymon-server-preview, xymon-client-preview]
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
@@ -48,8 +49,20 @@ jobs:
         # (self-owned) tap so sibling loads work.
         run: brew trust "$TAP"
 
-      - name: Build ${{ matrix.formula }} from latest commit (--HEAD)
-        run: brew install --HEAD --build-from-source "$TAP/${{ matrix.formula }}"
+      - name: The preview formulae are in step with the normal ones
+        # They are generated from them; an edit to a normal formula is carried
+        # over by scripts/gen-preview.rb (the daily preview workflow runs it too).
+        if: endsWith(matrix.formula, '-preview')
+        run: ruby scripts/gen-preview.rb --check
+
+      - name: Build ${{ matrix.formula }}
+        # --HEAD for the normal formulae (latest commit); a preview formula has
+        # no head, only its tarball.
+        run: |
+          case "${{ matrix.formula }}" in
+            *-preview) brew install --build-from-source "$TAP/${{ matrix.formula }}" ;;
+            *)         brew install --HEAD --build-from-source "$TAP/${{ matrix.formula }}" ;;
+          esac
 
       - name: Show what was installed
         # Before `brew test`, so the keg listing is in the logs even when the

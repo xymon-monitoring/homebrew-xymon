@@ -1,0 +1,72 @@
+name: preview
+
+# Keeps xymon-server-preview and xymon-client-preview on the latest published
+# preview of the next Xymon release (scripts/find-preview.sh), and in step with
+# the normal formulae they are generated from (scripts/gen-preview.rb).
+# When either changes them, both are built and tested here on macOS, then
+# committed to master: no pull request, since a push with this workflow's
+# token would start no other workflow to test it.
+
+on:
+  schedule:
+    - cron: "40 1 * * *"   # daily; xymon-experimental's build runs at 00:17
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preview
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Find the preview of the next release
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/find-preview.sh | tee -a "$GITHUB_OUTPUT"
+
+      - name: Regenerate the preview formulae
+        id: gen
+        if: steps.find.outputs.version != ''
+        env:
+          VERSION: ${{ steps.find.outputs.version }}
+          URL: ${{ steps.find.outputs.url }}
+          SHA256: ${{ steps.find.outputs.sha256 }}
+        run: |
+          ruby scripts/gen-preview.rb "$VERSION" "$URL" "$SHA256"
+          if git diff --quiet -- Formula; then
+            echo "Already on $VERSION and in step with the normal formulae."
+          else
+            git diff --stat -- Formula
+            echo "changed=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and test both, one after the other (they conflict)
+        if: steps.gen.outputs.changed == '1'
+        run: |
+          TAP=${GITHUB_REPOSITORY/homebrew-/}
+          brew tap "$TAP" "$PWD"
+          brew trust "$TAP"
+          for f in xymon-server-preview xymon-client-preview; do
+            brew install --build-from-source "$TAP/$f"
+            brew test "$TAP/$f"
+            brew uninstall "$f"
+          done
+
+      - name: Commit to master
+        if: steps.gen.outputs.changed == '1'
+        env:
+          VERSION: ${{ steps.find.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "preview formulae: $VERSION" -- Formula/xymon-server-preview.rb Formula/xymon-client-preview.rb
+          git push origin HEAD:master

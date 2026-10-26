@@ -12,6 +12,8 @@ class XymonClient < Formula
   # The client and server install the same `xymond` deobfuscation tools; they
   # conflict if both are linked. Install the client keg-only or unlink the other.
   conflicts_with "xymon-server", because: "both install overlapping client tools"
+  conflicts_with "xymon-server-preview", "xymon-client-preview",
+                 because: "they install the same tools and run the same services"
 
   # ext/, logs/ and tmp/ ship empty; keep Homebrew's Cleaner from pruning them.
   #   tmp  -- xymonclient.sh assembles each report in tmp/msg.<hostname>.txt;

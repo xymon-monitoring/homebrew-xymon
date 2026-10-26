@@ -20,6 +20,8 @@ class XymonServer < Formula
   # by the formula being installed, so the conflict must be declared on both
   # sides to be enforced in both install orders.
   conflicts_with "xymon-client", because: "both install overlapping client tools"
+  conflicts_with "xymon-server-preview", "xymon-client-preview",
+                 because: "they install the same tools and run the same services"
 
   # These runtime dirs ship empty; keep Homebrew's Cleaner from pruning them.
   #   server/tmp -- redirected to the var tree in post_install (it holds
