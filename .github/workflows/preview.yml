@@ -4,9 +4,11 @@ name: preview
 # (scripts/find-preview.sh --all): xymon-{server,client}-preview on the next
 # release's, xymon-{server,client}-preview@<milestone> on each unreleased
 # milestone's; and in step with the normal formulae they are generated from
-# (scripts/gen-preview.rb). The formulae that change are built and tested here
-# on macOS, then committed to master: no pull request, since a push with this
-# workflow's token would start no other workflow to test it.
+# (scripts/gen-preview.rb). The formulae that change are committed, built and
+# tested here on macOS, and the commit is pushed to master only if they all
+# pass: no pull request, since a push with this workflow's token would start
+# no other workflow to test it. They are committed before the build because
+# `brew tap NAME PATH` clones PATH: it sees commits, not the working tree.
 
 on:
   schedule:
@@ -54,6 +56,10 @@ jobs:
               fi
             done > build.txt
             cat build.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A Formula
+            git commit -q -m "preview formulae: $(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/xymon-server-preview@*.rb | paste -sd ' ')"
             echo "changed=1" >> "$GITHUB_OUTPUT"
           fi
 
@@ -69,12 +75,6 @@ jobs:
             brew uninstall "$f"
           done < build.txt
 
-      - name: Commit to master
+      - name: Push to master
         if: steps.gen.outputs.changed == '1'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          rm -f build.txt
-          git add -A Formula
-          git commit -m "preview formulae: $(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/xymon-server-preview@*.rb | paste -sd ' ')"
-          git push origin HEAD:master
+        run: git push origin HEAD:master
