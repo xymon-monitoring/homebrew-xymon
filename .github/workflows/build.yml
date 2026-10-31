@@ -18,7 +18,21 @@ permissions:
   contents: read
 
 jobs:
+  formulae:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+      # Every formula of the tap, the preview@<milestone> ones included: they
+      # come and go with the milestones, so the list is read, not written here.
+      - id: list
+        run: |
+          cd Formula
+          echo "list=$(printf '%s\n' *.rb | sed 's/\.rb$//' | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: formulae
     runs-on: macos-latest
     timeout-minutes: 30   # safety net against a build that stalls on a prompt
     strategy:
@@ -26,7 +40,7 @@ jobs:
       matrix:
         # The formulae conflict, so build each in its own runner rather than
         # installing them side by side.
-        formula: [xymon-server, xymon-client, xymon-server-preview, xymon-client-preview]
+        formula: ${{ fromJSON(needs.formulae.outputs.list) }}
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
@@ -52,7 +66,7 @@ jobs:
       - name: The preview formulae are in step with the normal ones
         # They are generated from them; an edit to a normal formula is carried
         # over by scripts/gen-preview.rb (the daily preview workflow runs it too).
-        if: endsWith(matrix.formula, '-preview')
+        if: contains(matrix.formula, '-preview')
         run: ruby scripts/gen-preview.rb --check
 
       - name: Build ${{ matrix.formula }}
@@ -60,7 +74,7 @@ jobs:
         # no head, only its tarball.
         run: |
           case "${{ matrix.formula }}" in
-            *-preview) brew install --build-from-source "$TAP/${{ matrix.formula }}" ;;
+            *-preview*) brew install --build-from-source "$TAP/${{ matrix.formula }}" ;;
             *)         brew install --HEAD --build-from-source "$TAP/${{ matrix.formula }}" ;;
           esac
 
