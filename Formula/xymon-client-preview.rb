@@ -16,6 +16,9 @@ class XymonClientPreview < Formula
   # The client and server install the same `xymond` deobfuscation tools; they
   # conflict if both are linked. Install the client keg-only or unlink the other.
   conflicts_with "xymon-client", "xymon-server", "xymon-server-preview",
+                 "xymon-server-preview@4.3.31", "xymon-server-preview@4.3.32",
+                 "xymon-server-preview@4.3.33", "xymon-client-preview@4.3.31",
+                 "xymon-client-preview@4.3.32", "xymon-client-preview@4.3.33",
                  because: "they install the same tools and run the same services"
 
   # ext/, logs/ and tmp/ ship empty; keep Homebrew's Cleaner from pruning them.
