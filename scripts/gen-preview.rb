@@ -1,43 +1,79 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# gen-preview.rb VERSION URL SHA256 -- write Formula/xymon-{server,client}-preview.rb
-# from Formula/xymon-{server,client}.rb, pointing at a preview tarball.
+# gen-preview.rb PLAN -- write the preview formulae from
+# Formula/xymon-{server,client}.rb, pointing at preview tarballs.
+#
+# PLAN is find-preview.sh --all's output, one unreleased milestone a line,
+# lowest first:  MILESTONE VERSION URL SHA256
+#
+#   xymon-{server,client}-preview            the first line: the next release
+#   xymon-{server,client}-preview@MILESTONE  every line: that milestone's latest
 #
 # The preview formulae are copies of the normal ones, so they never drift:
 # they differ only in their name, their source (a pinned tarball instead of
-# main), and where they keep config, data and logs (*-preview), so trying a
-# preview never touches a normal install's.
+# main), and where they keep config, data and logs (*-preview, shared by all
+# of them), so trying a preview never touches a normal install's, and moving
+# from one milestone's preview to another's keeps the preview config. A
+# milestone that is no longer in PLAN (released) loses its formulae.
 #
-#   gen-preview.rb --check   regenerate with the version, url and sha256 the
-#                            preview formulae carry now, and fail if that
-#                            changes them (a normal formula was edited since).
+# Every Xymon formula of the tap conflicts with every other; brew checks only
+# the side being installed, so the normal formulae's preview conflicts line is
+# rewritten here too.
+#
+#   gen-preview.rb --check   regenerate with the plan the preview formulae
+#                            carry now, and fail if that changes them (a
+#                            normal formula was edited since).
 
 ROOT = File.expand_path("..", __dir__)
 ROLES = %w[server client].freeze
+CONFLICT_BECAUSE = "they install the same tools and run the same services"
 
-def preview_of(role, version, url, sha256)
-  src = File.read(File.join(ROOT, "Formula/xymon-#{role}.rb"))
-  other = (ROLES - [role]).first
-  s = src.dup
-  s.sub!(/^class Xymon#{role.capitalize} < Formula$/, "class Xymon#{role.capitalize}Preview < Formula") or abort "#{role}: class line"
-  s.sub!(/^(  desc "[^"]*)"$/, '\1, preview of the next release"') or abort "#{role}: desc line"
+def path(name)
+  File.join(ROOT, "Formula/#{name}.rb")
+end
+
+# Homebrew's class name for a formula name: xymon-server-preview@4.3.32 is
+# XymonServerPreviewAT4332.
+def class_of(name)
+  name.capitalize.gsub(/[-_.\s]([a-zA-Z0-9])/) { Regexp.last_match(1).upcase }.sub(/(.)@(\d)/, '\1AT\2')
+end
+
+def conflicts(names)
+  first, *rest = names.map { |n| "\"#{n}\"" }
+  lines = [+"  conflicts_with #{first},"]
+  rest.each do |n|
+    if lines.last.size + n.size + 2 > 80
+      lines << +"                 #{n},"
+    else
+      lines.last << " #{n},"
+    end
+  end
+  "#{lines.join("\n")}\n                 because: \"#{CONFLICT_BECAUSE}\"\n"
+end
+
+def preview_of(role, milestone, version, url, sha256, all)
+  name = "xymon-#{role}-preview#{"@#{milestone}" if milestone}"
+  s = File.read(path("xymon-#{role}")).dup
+  s.sub!(/^class Xymon#{role.capitalize} < Formula$/, "class #{class_of(name)} < Formula") or abort "#{role}: class line"
+  what = milestone ? "preview of #{milestone}" : "preview of the next release"
+  s.sub!(/^(  desc "[^"]*)"$/, "\\1, #{what}\"") or abort "#{role}: desc line"
   # The source: the comment above head, and head itself.
+  which = milestone ? "Xymon #{milestone}" : "the next Xymon release"
   s.sub!(/^  # No upstream release tarball.*?^  head "[^"]*", branch: "main"\n/m, <<~RUBY.gsub(/^/, "  ")) or abort "#{role}: head block"
-    # The latest published preview of the next Xymon release, from
+    # The latest published preview of #{which}, from
     # xymon-monitoring/xymon-experimental: main plus the pull requests left for
     # that release, not all reviewed yet. For testing, not production.
     url "#{url}"
     sha256 "#{sha256}"
     version "#{version}"
   RUBY
-  # Conflicts: every other Xymon formula of the tap, declared here and in the
-  # normal formulae, since brew checks only the side being installed.
   s.sub!(/(?:^  conflicts_with .*\n(?:^ {4,}\S.*\n)*)+/, "@@CONFLICTS@@\n") or abort "#{role}: conflicts_with"
   s.gsub!("xymon-server", "xymon-server-preview")
   s.gsub!("xymon-client", "xymon-client-preview")
-  s.sub!("@@CONFLICTS@@\n", "  conflicts_with \"xymon-#{role}\", \"xymon-#{other}\", \"xymon-#{other}-preview\",\n" \
-                             "                 because: \"they install the same tools and run the same services\"\n")
+  # What a user types names this formula; directories stay the shared preview ones.
+  s.gsub!(/(brew services \w+ xymon-#{role}-preview)\b/, "\\1@#{milestone}") if milestone
+  s.sub!("@@CONFLICTS@@\n", conflicts(all - [name]))
   # Config, data and logs of their own.
   s.gsub!(%r{(\#\{etc\}/|etc/")xymon(?=[" /)])}, '\1xymon-preview')
   s.gsub!('var/"xymon"', 'var/"xymon-preview"')
@@ -46,23 +82,51 @@ def preview_of(role, version, url, sha256)
   "# Generated by scripts/gen-preview.rb from xymon-#{role}.rb: edit that file, not this one.\n#{s}"
 end
 
-def current
-  f = File.read(File.join(ROOT, "Formula/xymon-server-preview.rb"))
-  %w[version url sha256].map { |k| f[/^  #{k} "([^"]+)"$/, 1] or abort "no #{k} in xymon-server-preview.rb" }
+# The normal formula, its preview conflicts line naming every preview formula.
+def normal_of(role, previews)
+  s = File.read(path("xymon-#{role}"))
+  re = /^  conflicts_with "xymon-server-preview".*?because: "[^"]*"\n/m
+  s =~ re or abort "#{role}: preview conflicts"
+  s.sub(re, conflicts(previews))
+end
+
+# The plan the formulae carry: the next release's preview, and the milestones
+# that have formulae of their own (none, before the first run that made them).
+def plan_from_files
+  read = lambda do |file|
+    f = File.read(file)
+    %w[version url sha256].map { |k| f[/^  #{k} "([^"]+)"$/, 1] or abort "no #{k} in #{file}" }
+  end
+  next_release = read.call(path("xymon-server-preview"))
+  pinned = Dir[path("xymon-server-preview@*")].map { |f| [f[/@(.+)\.rb\z/, 1], *read.call(f)] }
+  [[next_release[0][/\A[\d.]+/], *next_release], pinned.sort_by { |m, *| Gem::Version.new(m) }]
 end
 
 check = ARGV == ["--check"]
-args = check ? current : ARGV
-abort "usage: gen-preview.rb VERSION URL SHA256 | --check" unless args.size == 3
-
-stale = []
-ROLES.each do |role|
-  path = File.join(ROOT, "Formula/xymon-#{role}-preview.rb")
-  text = preview_of(role, *args)
-  if check
-    stale << path unless File.exist?(path) && File.read(path) == text
-  else
-    File.write(path, text)
-  end
+abort "usage: gen-preview.rb PLAN | --check" unless check || ARGV.size == 1
+if check
+  next_release, plan = plan_from_files
+else
+  plan = File.readlines(ARGV[0], chomp: true).reject(&:empty?).map(&:split)
+  abort "empty plan" if plan.empty?
+  plan.each { |row| abort "bad plan line: #{row.join(' ')}" unless row.size == 4 }
+  next_release = plan.first
 end
-abort "out of date, run scripts/gen-preview.rb: #{stale.join(' ')}" unless stale.empty?
+
+previews = ROLES.flat_map { |r| ["xymon-#{r}-preview", *plan.map { |m, *| "xymon-#{r}-preview@#{m}" }] }
+want = {}
+ROLES.each do |role|
+  all = ["xymon-#{role}", *(ROLES - [role]).map { |r| "xymon-#{r}" }] + previews
+  want[path("xymon-#{role}-preview")] = preview_of(role, nil, *next_release.drop(1), all)
+  plan.each { |m, *rest| want[path("xymon-#{role}-preview@#{m}")] = preview_of(role, m, *rest, all) }
+  want[path("xymon-#{role}")] = normal_of(role, previews)
+end
+gone = Dir[path("xymon-*-preview@*")] - want.keys
+
+if check
+  stale = want.reject { |p, text| File.exist?(p) && File.read(p) == text }.keys + gone
+  abort "out of date, run scripts/gen-preview.rb: #{stale.join(' ')}" unless stale.empty?
+else
+  want.each { |p, text| File.write(p, text) }
+  gone.each { |p| File.delete(p) }
+end

@@ -92,16 +92,28 @@ brew services start xymon-server-preview
 - **No `--HEAD`, no milestone to choose.** They follow the next release on
   their own: a new preview of it, then the next milestone's once it is released.
   `brew upgrade` (then `brew services restart`) takes you to the newest.
+- **A given milestone instead:** each unreleased milestone with a published
+  preview has its own pair, `xymon-server-preview@<milestone>` and
+  `xymon-client-preview@<milestone>`, on that milestone's latest preview.
+  `brew search '/xymon-.*-preview@/'` lists them (with the tap added). A later milestone
+  holds the earlier ones' pull requests and more. A milestone's formulae go
+  away once it is released.
+
+  ```sh
+  brew install xymon-monitoring/xymon/xymon-server-preview@4.3.33
+  brew services start xymon-server-preview@4.3.33
+  ```
 - **Config, data and logs of their own** (`etc/xymon-preview`,
   `etc/xymon-client-preview`, `var/xymon-preview`, `var/log/xymon-preview`),
-  so a normal install's are left alone. Uninstall one to install the other:
-  they conflict, like server and client.
+  shared by every preview formula, so a normal install's are left alone and
+  moving from one milestone's preview to another's keeps your settings.
+  Uninstall one to install another: they all conflict, like server and client.
 - **Found a problem, or that it works?** Say so on the pull request it is
   about, naming the preview (the page footers show it, e.g. `4.3.31-preview1`).
 
 They are generated from the normal formulae by `scripts/gen-preview.rb`; edit
-those, not the preview files. A daily workflow moves them to a new preview,
-after building and testing both.
+those, not the preview files. A daily workflow moves them to new previews,
+after building and testing the ones that changed.
 
 ## Status
 

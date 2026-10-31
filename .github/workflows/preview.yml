@@ -1,11 +1,12 @@
 name: preview
 
-# Keeps xymon-server-preview and xymon-client-preview on the latest published
-# preview of the next Xymon release (scripts/find-preview.sh), and in step with
-# the normal formulae they are generated from (scripts/gen-preview.rb).
-# When either changes them, both are built and tested here on macOS, then
-# committed to master: no pull request, since a push with this workflow's
-# token would start no other workflow to test it.
+# Keeps the preview formulae on the latest published previews
+# (scripts/find-preview.sh --all): xymon-{server,client}-preview on the next
+# release's, xymon-{server,client}-preview@<milestone> on each unreleased
+# milestone's; and in step with the normal formulae they are generated from
+# (scripts/gen-preview.rb). The formulae that change are built and tested here
+# on macOS, then committed to master: no pull request, since a push with this
+# workflow's token would start no other workflow to test it.
 
 on:
   schedule:
@@ -22,51 +23,58 @@ concurrency:
 jobs:
   update:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 180   # a new milestone adds two builds
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
 
-      - name: Find the preview of the next release
+      - name: Find the previews of the unreleased milestones
         id: find
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/find-preview.sh | tee -a "$GITHUB_OUTPUT"
+        run: |
+          scripts/find-preview.sh --all | tee plan.tsv
+          if [ -s plan.tsv ]; then echo "found=1" >> "$GITHUB_OUTPUT"; fi
 
       - name: Regenerate the preview formulae
         id: gen
-        if: steps.find.outputs.version != ''
-        env:
-          VERSION: ${{ steps.find.outputs.version }}
-          URL: ${{ steps.find.outputs.url }}
-          SHA256: ${{ steps.find.outputs.sha256 }}
+        if: steps.find.outputs.found == '1'
         run: |
-          ruby scripts/gen-preview.rb "$VERSION" "$URL" "$SHA256"
-          if git diff --quiet -- Formula; then
-            echo "Already on $VERSION and in step with the normal formulae."
+          ruby scripts/gen-preview.rb plan.tsv
+          rm plan.tsv
+          if [ -z "$(git status --porcelain -- Formula)" ]; then
+            echo "Already on these previews and in step with the normal formulae."
           else
-            git diff --stat -- Formula
+            git status --short -- Formula
+            # The preview formulae whose source changed or that are new: built
+            # below. One whose conflicts line alone changed is not.
+            for f in $(git status --porcelain -- 'Formula/*-preview*.rb' | awk '$1 != "D" { print $2 }'); do
+              if [ -z "$(git ls-files -- "$f")" ] || git diff -- "$f" | grep -q '^[-+]  version '; then
+                basename "$f" .rb
+              fi
+            done > build.txt
+            cat build.txt
             echo "changed=1" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and test both, one after the other (they conflict)
+      - name: Build and test each, one after the other (they conflict)
         if: steps.gen.outputs.changed == '1'
         run: |
           TAP=${GITHUB_REPOSITORY/homebrew-/}
           brew tap "$TAP" "$PWD"
           brew trust "$TAP"
-          for f in xymon-server-preview xymon-client-preview; do
+          while read -r f; do
             brew install --build-from-source "$TAP/$f"
             brew test "$TAP/$f"
             brew uninstall "$f"
-          done
+          done < build.txt
 
       - name: Commit to master
         if: steps.gen.outputs.changed == '1'
-        env:
-          VERSION: ${{ steps.find.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "preview formulae: $VERSION" -- Formula/xymon-server-preview.rb Formula/xymon-client-preview.rb
+          rm -f build.txt
+          git add -A Formula
+          git commit -m "preview formulae: $(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/xymon-server-preview@*.rb | paste -sd ' ')"
           git push origin HEAD:master
