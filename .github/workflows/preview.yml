@@ -59,7 +59,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A Formula
-            git commit -q -m "preview formulae: $(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/xymon-server-preview@*.rb | paste -sd ' ')"
+            git commit -q -m "preview formulae: $(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/xymon-server-preview@*.rb | paste -sd ' ' -)"
             echo "changed=1" >> "$GITHUB_OUTPUT"
           fi
 
@@ -69,11 +69,13 @@ jobs:
           TAP=${GITHUB_REPOSITORY/homebrew-/}
           brew tap "$TAP" "$PWD"
           brew trust "$TAP"
-          while read -r f; do
+          # The list is read on its own descriptor: brew reads stdin, and on
+          # the loop's it would swallow the rest of the list.
+          while read -r f <&3; do
             brew install --build-from-source "$TAP/$f"
             brew test "$TAP/$f"
             brew uninstall "$f"
-          done < build.txt
+          done 3< build.txt
 
       - name: Push to master
         if: steps.gen.outputs.changed == '1'
