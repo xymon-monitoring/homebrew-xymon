@@ -7,9 +7,9 @@ class XymonServerPreviewAT4331 < Formula
   # The latest published preview of Xymon 4.3.31, from
   # xymon-monitoring/xymon-experimental: main plus the pull requests left for
   # that release, not all reviewed yet. For testing, not production.
-  url "https://github.com/xymon-monitoring/xymon-experimental/releases/download/preview-4.3.31-4/xymon-4.3.31-preview4.tar.gz"
-  sha256 "c3fd8290f964505b81297fb06c7a07c1fe7ed7af46e94c81223ea21a78ee8a23"
-  version "4.3.31-preview4"
+  url "https://github.com/xymon-monitoring/xymon-experimental/releases/download/preview-4.3.31-5/xymon-4.3.31-preview5.tar.gz"
+  sha256 "0556d498f4cc149da0ef6817b3bfddb3e599be0c009e67c01add83e27c88aa11"
+  version "4.3.31-preview5"
 
   depends_on "openssl@3"
   depends_on "pcre2"
