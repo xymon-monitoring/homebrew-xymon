@@ -58,9 +58,10 @@ def preview_of(role, milestone, version, url, sha256, all)
   s.sub!(/^class Xymon#{role.capitalize} < Formula$/, "class #{class_of(name)} < Formula") or abort "#{role}: class line"
   what = milestone ? "preview of #{milestone}" : "preview of the next release"
   s.sub!(/^(  desc "[^"]*)"$/, "\\1, #{what}\"") or abort "#{role}: desc line"
-  # The source: the comment above head, and head itself.
+  # The source: the comment above it, the release's url and sha256 once the
+  # normal formula has one, and head. A preview has its tarball alone.
   which = milestone ? "Xymon #{milestone}" : "the next Xymon release"
-  s.sub!(/^  # No upstream release tarball.*?^  head "[^"]*", branch: "main"\n/m, <<~RUBY.gsub(/^/, "  ")) or abort "#{role}: head block"
+  s.sub!(/^(?:  #.*\n)*(?:  (?:url|sha256|version) .*\n)*  head "[^"]*", branch: "main"\n/, <<~RUBY.gsub(/^/, "  ")) or abort "#{role}: source block"
     # The latest published preview of #{which}, from
     # xymon-monitoring/xymon-experimental: main plus the pull requests left for
     # that release, not all reviewed yet. For testing, not production.
