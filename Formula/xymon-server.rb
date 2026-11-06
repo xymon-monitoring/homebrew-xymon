@@ -4,10 +4,10 @@ class XymonServer < Formula
   license "GPL-2.0-or-later"
 
   # No upstream release tarball is published yet. Build from main for now.
-  # Once `rel-4.3.31` is cut by the release workflow, pin a stable source:
+  # Once `rel-4.3.31` is cut by the release workflow, add its source above
+  # head, which stays for --HEAD:
   #   url "https://github.com/xymon-monitoring/xymon/releases/download/rel-4.3.31/xymon-4.3.31.tar.gz"
   #   sha256 "<from the published xymon-4.3.31.tar.gz.sha256>"
-  # and drop the --HEAD requirement.
   head "https://github.com/xymon-monitoring/xymon.git", branch: "main"
 
   depends_on "openssl@3"

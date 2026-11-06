@@ -231,9 +231,12 @@ Notes:
 
 There's no published Xymon release tarball yet, so these are `--HEAD`-only. Once
 the release workflow cuts `rel-4.3.31` (producing `xymon-4.3.31.tar.gz` +
-`.sha256`), replace the `head` stanza with a pinned `url`/`sha256` — the commented
-block in `Formula/xymon-server.rb` shows exactly what to add. Then plain
-`brew install` gives the stable release while `--HEAD` still gives the latest commit.
+`.sha256`), add a `url`/`sha256` pair above the `head` line of both normal
+formulae, keeping `head` — the commented block in `Formula/xymon-server.rb`
+shows exactly what to add. Then plain `brew install` gives the stable release
+while `--HEAD` still gives the latest commit. `scripts/gen-preview.rb` replaces
+that pair, with `head`, by each preview's own tarball, and CI then builds each
+normal formula both ways.
 
 ## How the build works
 

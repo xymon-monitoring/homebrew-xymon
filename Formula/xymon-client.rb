@@ -4,7 +4,7 @@ class XymonClient < Formula
   license "GPL-2.0-or-later"
 
   # No upstream release tarball is published yet. Build from main for now.
-  # Once `rel-4.3.31` is cut, pin url + sha256 (see Formula/xymon-server.rb) and drop --HEAD.
+  # Once `rel-4.3.31` is cut, add url + sha256 above head (see Formula/xymon-server.rb).
   head "https://github.com/xymon-monitoring/xymon.git", branch: "main"
 
   depends_on "openssl@3"
