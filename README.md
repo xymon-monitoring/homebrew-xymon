@@ -15,7 +15,8 @@ brew install --HEAD xymon-monitoring/xymon/xymon-client   # client only
 ```
 
 **2. Configure** — config lives under `$(brew --prefix)/etc` and survives
-reinstalls and upgrades:
+reinstalls and upgrades: a file you edited keeps your version, with the new
+upstream one beside it as `*.default`; a file you never edited is replaced:
 
 ```sh
 # client: set XYMSRV to your Xymon server's address

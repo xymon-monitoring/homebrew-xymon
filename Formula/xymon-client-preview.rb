@@ -89,8 +89,9 @@ class XymonClientPreview < Formula
         brew services start xymon-client-preview
 
       Config lives in #{etc}/xymon-client-preview (the keg's etc/ is a symlink to it),
-      so your edits survive reinstalls and upgrades; changed upstream defaults
-      are written alongside as *.default files.
+      so your edits survive reinstalls and upgrades. A file you never edited
+      is replaced by the new upstream one; a file you edited keeps your version,
+      with the new upstream one written alongside as *.default.
 
       After a `brew reinstall`/upgrade, restart the service (the running
       xymonlaunch still points into the replaced keg):

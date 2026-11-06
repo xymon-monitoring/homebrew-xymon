@@ -189,8 +189,9 @@ class XymonServerPreviewAT4332 < Formula
         brew services start xymon-server-preview@4.3.32
 
       Config lives in #{etc}/xymon-preview (the keg's server/etc is a symlink to it),
-      so your edits survive reinstalls and upgrades; changed upstream defaults
-      are written alongside as *.default files.
+      so your edits survive reinstalls and upgrades. A file you never edited
+      is replaced by the new upstream one; a file you edited keeps your version,
+      with the new upstream one written alongside as *.default.
 
       Binaries are under #{opt_prefix}/server/bin (not linked into PATH); run e.g.
         #{opt_prefix}/server/bin/xymon 127.0.0.1 "ping"
