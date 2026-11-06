@@ -10,8 +10,8 @@ A [Homebrew](https://brew.sh/) tap for [Xymon](https://xymon.com/) on macOS —
 
 ```sh
 brew tap xymon-monitoring/xymon
-brew install --HEAD xymon-monitoring/xymon/xymon-server   # server
-brew install --HEAD xymon-monitoring/xymon/xymon-client   # client only
+brew install xymon-monitoring/xymon/xymon-server   # server
+brew install xymon-monitoring/xymon/xymon-client   # client only
 ```
 
 **2. Configure** — config lives under `$(brew --prefix)/etc` and survives
@@ -48,12 +48,11 @@ brew services stop xymon-server       # shut down now and remove the auto-start
 brew services run xymon-server        # run now only, without auto-start
 ```
 
-**4. Upgrade** — pulls and builds the latest upstream commit, keeping your
-config; the service keeps running the old binaries until restarted, so
-always restart after:
+**4. Upgrade** — pulls the newest release, keeping your config; the service
+keeps running the old binaries until restarted, so always restart after:
 
 ```sh
-brew upgrade --fetch-HEAD xymon-monitoring/xymon/xymon-server
+brew upgrade xymon-monitoring/xymon/xymon-server
 brew services restart xymon-server
 ```
 
@@ -227,16 +226,14 @@ Notes:
   `brew reinstall` reuses the install receipt (which is already `--HEAD`), so it
   rebuilds from `head` regardless.
 
-## Pinning a stable release (TODO)
+## Stable release vs. the latest commit
 
-There's no published Xymon release tarball yet, so these are `--HEAD`-only. Once
-the release workflow cuts `rel-4.3.31` (producing `xymon-4.3.31.tar.gz` +
-`.sha256`), add a `url`/`sha256` pair above the `head` line of both normal
-formulae, keeping `head` — the commented block in `Formula/xymon-server.rb`
-shows exactly what to add. Then plain `brew install` gives the stable release
-while `--HEAD` still gives the latest commit. `scripts/gen-preview.rb` replaces
-that pair, with `head`, by each preview's own tarball, and CI then builds each
-normal formula both ways.
+The normal formulae pin the newest Xymon release (`url`/`sha256`), so plain
+`brew install` gives the stable release, while `--HEAD` still builds the
+current `main`. To move the pin at the next release, update the `url`/`sha256`
+in both normal formulae; `scripts/gen-preview.rb` replaces that pair, with
+`head`, by each preview's own tarball, and CI builds each normal formula both
+ways.
 
 ## How the build works
 
