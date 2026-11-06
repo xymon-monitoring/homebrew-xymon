@@ -36,6 +36,8 @@ class XymonServer < Formula
   #     can't write msg.localhost.txt, so the host reports no cpu/memory/disk.
   #   server/www/{html,notes,rep,snap,wml} -- xymongen logs "Cannot read links
   #     in directory .../www/notes" and skips host notes when they are missing.
+  #     rep and snap are redirected to the var tree in post_install, like
+  #     server/tmp; the keg path has to exist for the symlink to replace.
   skip_clean "server/tmp", "client/tmp", "client/logs",
              "server/www/html", "server/www/notes", "server/www/rep",
              "server/www/snap", "server/www/wml"
@@ -106,7 +108,7 @@ class XymonServer < Formula
     # they were lost on a live system. server/tmp is handled below, where it
     # is redirected out of the keg.
     [prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
-    %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
+    %w[html notes wml].each { |d| (prefix/"server/www"/d).mkpath }
     # XYMONLOGDIR and the launchd service logs live in #{var}/log/xymon,
     # outside the keg; nothing in the keg creates it (same placement as the
     # client formula).
@@ -126,6 +128,26 @@ class XymonServer < Formula
     xymontmp.mkpath
     rm_rf prefix/"server/tmp"
     ln_sf xymontmp, prefix/"server/tmp"
+
+    # The generated reports the same way: www/rep (report.cgi), www/snap
+    # (snapshot.cgi) and www/periodic (xymonreports.sh, the periodic-* tasks)
+    # are written under XYMONWWWDIR, inside the keg, so every install threw
+    # away every report made so far. Reports still inside a keg - this one
+    # after `brew postinstall`, or the previous version's, which an upgrade
+    # removes only after this step - move over before the redirect, so the
+    # first install with this formula keeps what the one before it made.
+    %w[rep snap periodic].each do |d|
+      keep = xymonvar/"www"/d
+      keep.mkpath
+      indir = prefix/"server/www"/d
+      prefix.parent.children.map { |keg| keg/"server/www"/d }.each do |old|
+        next unless old.directory? && !old.symlink?
+
+        old.children.each { |c| mv c, keep/c.basename unless (keep/c.basename).exist? }
+      end
+      rm_rf indir
+      ln_sf keep, indir
+    end
 
     # Re-link the CGIs. Each name in cgi-bin/cgi-secure is a hard link to
     # server/bin/cgiwrap. install-cgi was not ordered after install-bin, so a
@@ -245,6 +267,8 @@ class XymonServer < Formula
     # XYMONTMP must live outside the keg, or every install throws away
     # xymond's checkpoint and the web UI is blank until a client reports.
     assert_predicate prefix/"server/tmp", :symlink?
+    # So must the generated reports, or every install throws them away.
+    %w[rep snap periodic].each { |d| assert_predicate prefix/"server/www"/d, :symlink? }
     assert_predicate prefix/"server/etc/xymonserver.cfg", :exist?
     # The cgiwrap hard links keg post-processing was observed dropping.
     # post_install restores any that are missing, so these must be there
