@@ -7,9 +7,9 @@ class XymonServerPreviewAT4332 < Formula
   # The latest published preview of Xymon 4.3.32, from
   # xymon-monitoring/xymon-experimental: main plus the pull requests left for
   # that release, not all reviewed yet. For testing, not production.
-  url "https://github.com/xymon-monitoring/xymon-experimental/releases/download/preview-4.3.32-1/xymon-4.3.32-preview1.tar.gz"
-  sha256 "8938b31e48cd75ea977360e31c90609389b397bc2413a2fbe226d6ae9a27aa02"
-  version "4.3.32-preview1"
+  url "https://github.com/xymon-monitoring/xymon-experimental/releases/download/preview-4.3.32-2/xymon-4.3.32-preview2.tar.gz"
+  sha256 "3c7ce2b384ed3f0f09ea8ce6c1fd277a73c1b5da91eb75735f51e15326933827"
+  version "4.3.32-preview2"
 
   depends_on "openssl@3"
   depends_on "pcre2"
@@ -21,8 +21,7 @@ class XymonServerPreviewAT4332 < Formula
   # by the formula being installed, so the conflict must be declared on both
   # sides to be enforced in both install orders.
   conflicts_with "xymon-server", "xymon-client", "xymon-server-preview",
-                 "xymon-server-preview@4.3.31", "xymon-server-preview@4.3.33",
-                 "xymon-client-preview", "xymon-client-preview@4.3.31",
+                 "xymon-server-preview@4.3.33", "xymon-client-preview",
                  "xymon-client-preview@4.3.32", "xymon-client-preview@4.3.33",
                  because: "they install the same tools and run the same services"
 

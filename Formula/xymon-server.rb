@@ -18,9 +18,8 @@ class XymonServer < Formula
   # by the formula being installed, so the conflict must be declared on both
   # sides to be enforced in both install orders.
   conflicts_with "xymon-client", because: "both install overlapping client tools"
-  conflicts_with "xymon-server-preview", "xymon-server-preview@4.3.31",
-                 "xymon-server-preview@4.3.32", "xymon-server-preview@4.3.33",
-                 "xymon-client-preview", "xymon-client-preview@4.3.31",
+  conflicts_with "xymon-server-preview", "xymon-server-preview@4.3.32",
+                 "xymon-server-preview@4.3.33", "xymon-client-preview",
                  "xymon-client-preview@4.3.32", "xymon-client-preview@4.3.33",
                  because: "they install the same tools and run the same services"
 

@@ -7,17 +7,16 @@ class XymonClientPreview < Formula
   # The latest published preview of the next Xymon release, from
   # xymon-monitoring/xymon-experimental: main plus the pull requests left for
   # that release, not all reviewed yet. For testing, not production.
-  url "https://github.com/xymon-monitoring/xymon-experimental/releases/download/preview-4.3.31-5/xymon-4.3.31-preview5.tar.gz"
-  sha256 "0556d498f4cc149da0ef6817b3bfddb3e599be0c009e67c01add83e27c88aa11"
-  version "4.3.31-preview5"
+  url "https://github.com/xymon-monitoring/xymon-experimental/releases/download/preview-4.3.32-2/xymon-4.3.32-preview2.tar.gz"
+  sha256 "3c7ce2b384ed3f0f09ea8ce6c1fd277a73c1b5da91eb75735f51e15326933827"
+  version "4.3.32-preview2"
 
   depends_on "openssl@3"
 
   # The client and server install the same `xymond` deobfuscation tools; they
   # conflict if both are linked. Install the client keg-only or unlink the other.
   conflicts_with "xymon-client", "xymon-server", "xymon-server-preview",
-                 "xymon-server-preview@4.3.31", "xymon-server-preview@4.3.32",
-                 "xymon-server-preview@4.3.33", "xymon-client-preview@4.3.31",
+                 "xymon-server-preview@4.3.32", "xymon-server-preview@4.3.33",
                  "xymon-client-preview@4.3.32", "xymon-client-preview@4.3.33",
                  because: "they install the same tools and run the same services"
 
