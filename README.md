@@ -144,7 +144,10 @@ written alongside as `*.default` files. The server's runtime state does too:
 install keeps the RRDs, the history and xymond's checkpoint. Without the last
 of those, xymond restarts with an empty status board and the web UI stays blank
 until a client reports. The client's `ext/`, `local/`, `logs/` and `tmp/` are
-symlinks into `$(brew --prefix)/var/xymon-client` the same way.
+symlinks into `$(brew --prefix)/var/xymon-client` the same way. The logs are
+rotated once a day by a Xymon task (`tasks.d/rotatelogs.cfg` on the server,
+`clientlaunch.d/rotatelogs.cfg` on the client), with `xymon-rotatelogs`: past
+10 MiB a log is copied, gzipped and truncated, and five copies are kept.
 
 > CI verifies the **build** and runs each formula's `test` block, on a fresh
 > install and again after replacing the keg. A live pass on a real Mac (2026-08)

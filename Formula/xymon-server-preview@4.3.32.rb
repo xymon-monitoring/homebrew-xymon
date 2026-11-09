@@ -132,6 +132,26 @@ class XymonServerPreviewAT4332 < Formula
     SH
     chmod 0755, prefix/"client/bin/clientupdate"
 
+    # Log rotation: nothing else does it, and launchd's .out/.err and the
+    # Xymon logs grow without limit. lib/xymon-rotatelogs (copy, gzip,
+    # truncate, keep five) goes beside the programs, and a task in tasks.d
+    # runs it once a day over XYMONSERVERLOGS, where xymonserver.cfg sends
+    # every server log, the bundled client's included. In the keg's etc
+    # before persist_etc, so it is the admin's to edit: the size, the
+    # count, the directories, or DISABLED. The script says why not newsyslog.
+    cp Pathname(__FILE__).dirname.parent/"lib/xymon-rotatelogs", prefix/"server/bin/xymon-rotatelogs"
+    chmod 0755, prefix/"server/bin/xymon-rotatelogs"
+    (prefix/"server/etc/tasks.d/rotatelogs.cfg").write <<~EOS
+      # Rotates the logs once a day: see xymon-rotatelogs for what it keeps.
+      # Change the size (-s BYTES), the count (-k N) or the directories here,
+      # or add a DISABLED line to stop it.
+      [rotatelogs]
+      	ENVFILE #{prefix}/server/etc/xymonserver.cfg
+      	CMD xymon-rotatelogs $XYMONSERVERLOGS
+      	LOGFILE $XYMONSERVERLOGS/rotatelogs.log
+      	INTERVAL 1d
+    EOS
+
     # Persist config in #{etc}/xymon-preview so edits (hosts.cfg, graphs.cfg,
     # alerts.cfg, xymonserver.cfg ...) survive reinstalls and upgrades;
     # see lib/xymon_etc.rb for how (shared with xymon-client-preview).
@@ -323,6 +343,17 @@ class XymonServerPreviewAT4332 < Formula
     assert_predicate prefix/"cgi-secure/useradm.sh", :exist?
     # The bundled client's drop-in directory, kept from the cleaner.
     assert_predicate prefix/"client/etc/xymonclient.d", :directory?
+    # Log rotation: the task is there, and the script rotates a log past
+    # the size, keeps a copy, and leaves a small one alone.
+    assert_predicate prefix/"server/etc/tasks.d/rotatelogs.cfg", :file?
+    logs = testpath/"logs"
+    logs.mkpath
+    (logs/"big.log").write("x" * 2_000_000)
+    (logs/"small.log").write("y")
+    system prefix/"server/bin/xymon-rotatelogs", "-s", "1000000", logs
+    assert_predicate logs/"big.log.1.gz", :file?
+    assert_equal 0, (logs/"big.log").size
+    assert_equal 1, (logs/"small.log").size
     # The diagnostic programs install-tools adds, and their manual page.
     %w[xymonloadhosts xymonstackio xymonavailability xymonlocator xymonnetprobe].each do |t|
       assert_predicate prefix/"server/bin"/t, :executable?

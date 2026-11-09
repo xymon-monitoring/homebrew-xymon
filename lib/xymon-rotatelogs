@@ -1,0 +1,62 @@
+#!/bin/sh
+#
+# xymon-rotatelogs [-s BYTES] [-k N] DIR...
+#
+# Rotate the Xymon logs under each DIR: every *.log, *.out and *.err there
+# that has grown past BYTES (10 MiB) is copied to NAME.1, which is gzipped,
+# and then truncated in place; the copies NAME.1.gz .. NAME.N.gz are kept
+# (5) and the oldest dropped. Copy-then-truncate, as logrotate's copytruncate
+# and xymon-rpm's rule do: Xymon's programs open their logs for appending
+# and keep writing after the truncation, with no signal to send. Lines
+# written between the copy and the truncation are lost; a daily run on a
+# 10 MiB file loses a few. Nothing is truncated unless the copy succeeded,
+# so a full disk leaves the log whole. A directory being rotated by another
+# run is skipped.
+#
+# Installed by the Homebrew formulae and run once a day as a Xymon task,
+# tasks.d/rotatelogs.cfg on the server and clientlaunch.d/rotatelogs.cfg on
+# the client, which is where to change the size, the count, or the
+# directories, or to disable it. No root: macOS's newsyslog would need
+# /etc/newsyslog.d, and it renames rather than truncates.
+
+size=10485760
+keep=5
+while [ $# -gt 0 ]; do
+	case $1 in
+	-s) size=$2; shift 2 ;;
+	-k) keep=$2; shift 2 ;;
+	--) shift; break ;;
+	-*) echo "usage: xymon-rotatelogs [-s BYTES] [-k N] DIR..." >&2; exit 2 ;;
+	*) break ;;
+	esac
+done
+[ $# -gt 0 ] || { echo "usage: xymon-rotatelogs [-s BYTES] [-k N] DIR..." >&2; exit 2; }
+
+rc=0
+for dir in "$@"; do
+	[ -d "$dir" ] || continue
+	lock=$dir/.rotatelogs.lock
+	mkdir "$lock" 2>/dev/null || { echo "$dir: another run holds $lock, skipped" >&2; continue; }
+	for f in "$dir"/*.log "$dir"/*.out "$dir"/*.err; do
+		[ -f "$f" ] || continue
+		# stat -f is BSD, which macOS is; wc -c reads the whole file.
+		bytes=$(stat -f %z "$f" 2>/dev/null) || bytes=$(wc -c < "$f")
+		[ "$bytes" -gt "$size" ] || continue
+		n=$keep
+		while [ "$n" -gt 1 ]; do
+			p=$((n - 1))
+			[ -f "$f.$p.gz" ] && mv -f "$f.$p.gz" "$f.$n.gz"
+			n=$p
+		done
+		if cp -p "$f" "$f.1" && gzip -f "$f.1"; then
+			: > "$f"
+			echo "$f: $bytes bytes rotated"
+		else
+			rm -f "$f.1" "$f.1.gz"
+			echo "$f: could not copy, left as it is" >&2
+			rc=1
+		fi
+	done
+	rmdir "$lock"
+done
+exit $rc
