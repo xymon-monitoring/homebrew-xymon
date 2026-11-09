@@ -36,7 +36,12 @@ class XymonServerPreview < Formula
   #     in directory .../www/notes" and skips host notes when they are missing.
   #     rep and snap are redirected to the var tree in post_install, like
   #     server/tmp; the keg path has to exist for the symlink to replace.
-  skip_clean "server/tmp", "client/tmp", "client/logs",
+  #   client/etc/xymonclient.d -- the drop-in directory xymonclient.cfg
+  #     includes ("optional directory"), which 4.3.31's build does not create
+  #     and which ships empty; a missing one is skipped silently. Not
+  #     clientlaunch.d: the server never reads clientlaunch.cfg, its bundled
+  #     client is a task in tasks.cfg, so extra tasks belong in tasks.d.
+  skip_clean "server/tmp", "client/tmp", "client/logs", "client/etc/xymonclient.d",
              "server/www/html", "server/www/notes", "server/www/rep",
              "server/www/snap", "server/www/wml"
   # cgi-bin/cgi-secure hold cgiwrap hardlinked to every CGI name; keg
@@ -82,7 +87,8 @@ class XymonServerPreview < Formula
     # `configure --server` lays the server out under prefix/server/ (with a
     # matching client/ tree). Ensure the skip_clean'd runtime dirs exist in
     # the staged keg (make install does not reliably create the empty ones).
-    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
+    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs",
+     prefix/"client/etc/xymonclient.d"].each(&:mkpath)
     %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
 
     # Over the built clientupdate. The bundled client runs in server mode
@@ -140,7 +146,7 @@ class XymonServerPreview < Formula
     # in a fresh keg, but `brew postinstall` should also restore them if
     # they were lost on a live system. server/tmp is handled below, where it
     # is redirected out of the keg.
-    [prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
+    [prefix/"client/tmp", prefix/"client/logs", prefix/"client/etc/xymonclient.d"].each(&:mkpath)
     %w[html notes wml].each { |d| (prefix/"server/www"/d).mkpath }
     # XYMONLOGDIR and the launchd service logs live in #{var}/log/xymon,
     # outside the keg; nothing in the keg creates it (same placement as the
@@ -309,6 +315,8 @@ class XymonServerPreview < Formula
     assert_predicate prefix/"cgi-bin/history.sh", :exist?
     assert_predicate prefix/"cgi-bin/eventlog.sh", :exist?
     assert_predicate prefix/"cgi-secure/useradm.sh", :exist?
+    # The bundled client's drop-in directory, kept from the cleaner.
+    assert_predicate prefix/"client/etc/xymonclient.d", :directory?
     # The clientupdate stand-in, not the built program: --level prints
     # nothing (xymonclient.sh then uses `xymon --version`), --update
     # declines without touching anything and exits 0, so the client run

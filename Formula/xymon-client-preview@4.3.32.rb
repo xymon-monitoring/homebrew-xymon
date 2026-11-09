@@ -45,6 +45,15 @@ class XymonClientPreviewAT4332 < Formula
     # creating them first; Homebrew only makes `prefix`, so pre-create them.
     %w[bin etc ext local logs tmp].each { |d| (prefix/d).mkpath }
     system "make", "install", "PKGBUILD=1"
+    # The drop-in directories the two config files declare ("optional
+    # directory .../etc/clientlaunch.d" and ".../etc/xymonclient.d"), which
+    # 4.3.31's client/Makefile does not create; a missing one is skipped
+    # silently, so nothing says why a drop-in was never read. With them, a
+    # local task or setting is a file of the admin's own and the shipped
+    # files keep following upstream. Before persist_etc, which mirrors
+    # directories into #{etc}/xymon-client-preview. Upstream creates them from
+    # xymon#411 on; this stays until the pinned release carries it.
+    %w[clientlaunch.d xymonclient.d].each { |d| (prefix/"etc"/d).mkpath }
 
     # Persist config in #{etc}/xymon-client-preview so edits (XYMSRV in
     # xymonclient.cfg, clientlaunch.cfg tasks ...) survive reinstalls and
@@ -128,6 +137,9 @@ class XymonClientPreviewAT4332 < Formula
     # an existence check alone would also pass on a real, unwired etc/ dir.
     assert_predicate prefix/"etc", :symlink?
     assert_predicate prefix/"etc/xymonclient.cfg", :exist?
+    # The drop-in directories both config files include, so a local task
+    # or setting does not have to be an edit of the shipped file.
+    %w[clientlaunch.d xymonclient.d].each { |d| assert_predicate prefix/"etc"/d, :directory? }
     # The service's environment, as the service block builds it: xymoncmd
     # with the keg's opt --env path must set XYMONCLIENTHOME to the keg,
     # or the client tasks point at /etc and /bin and collect nothing. The
