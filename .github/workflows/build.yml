@@ -2,7 +2,9 @@ name: build (macOS)
 
 # Compiles the formulae on a real macOS runner: the normal ones from the latest
 # upstream commit (--HEAD), and also from their release tarball once they pin
-# one; the preview ones from their pinned tarball.
+# one; the preview ones from their pinned tarball. Then runs the installed
+# xymon-server once for real (the `live` job): a build that passes `brew test`
+# can still never collect anything, as the client's service did (#28).
 # - push / pull_request: verify a formula edit still builds.
 # - weekly cron: rebuild the current main tip, so a breaking upstream commit
 #   surfaces here rather than at a user's `brew install --HEAD`.
@@ -113,3 +115,40 @@ jobs:
 
       - name: Run the test block again on the replaced keg
         run: brew test "$TAP/${{ matrix.formula }}"
+
+  live:
+    # Does the installed server monitor? Started as its launchd service starts
+    # it, the bundled client's report must come back out of xymond. One job per
+    # source of xymon-server, not per formula: the client formula's own service
+    # is checked by its test block, and the previews are copies of these two.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [tarball, head]
+    name: live server (${{ matrix.source }})
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Register and trust this checkout as a tap
+        # As in `build`: the edited formula, not the pushed remote, and the
+        # sibling loads conflicts_with makes.
+        run: |
+          echo "TAP=${GITHUB_REPOSITORY/homebrew-/}" >> "$GITHUB_ENV"
+          brew tap "${GITHUB_REPOSITORY/homebrew-/}" "$PWD"
+          brew trust "${GITHUB_REPOSITORY/homebrew-/}"
+
+      - name: Install xymon-server from its ${{ matrix.source }}
+        run: |
+          case "${{ matrix.source }}" in
+            head) brew install --HEAD --build-from-source "$TAP/xymon-server" ;;
+            *)    brew install --build-from-source "$TAP/xymon-server" ;;
+          esac
+
+      - name: Run the server and read the bundled client's report back
+        # The script raises the SysV shared-memory sysctls xymond needs
+        # (sudo, passwordless on the hosted runners) and says so if the
+        # kernel refuses because a segment already exists.
+        run: tests/live-server.sh "$(brew --prefix xymon-server)"

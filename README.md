@@ -123,6 +123,9 @@ commit), on every push and a weekly cron:
 - **`xymon-server`** — ✅ server build (xymond, xymonnet, web CGIs, …).
 - **`xymon-client`** — ✅ client build; the lighter option for monitoring a Mac
   that reports to an existing server.
+- **the server runs** — ✅ `tests/live-server.sh` starts the installed server
+  as its service does and reads the bundled client's report back out of
+  xymond, from the release tarball and from `--HEAD`.
 
 Each formula installs the binaries under the Homebrew prefix and provides a
 launchd `service` (`brew services start …`). They do **not** create a `xymon`
