@@ -122,7 +122,9 @@ commit), on every push and a weekly cron:
 
 - **`xymon-server`** — ✅ server build (xymond, xymonnet, web CGIs, …).
 - **`xymon-client`** — ✅ client build; the lighter option for monitoring a Mac
-  that reports to an existing server.
+  that reports to an existing server, which analyses its data (the server's
+  `analysis.cfg` sets the thresholds, as for any other client), or
+  `--with-local-analysis` to have the Mac judge its own thresholds.
 - **the server runs** — ✅ `tests/live-server.sh` starts the installed server
   as its service does and reads the bundled client's report back out of
   xymond, from the release tarball and from `--HEAD`.
