@@ -85,6 +85,41 @@ class XymonServerPreview < Formula
     [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
     %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
 
+    # Over the built clientupdate. The bundled client runs in server mode
+    # (tasks.cfg starts xymonclient.sh without --local), so when the
+    # server's client-local.cfg sets clientversion: for this host,
+    # xymonclient.sh execs `clientupdate --update=VERSION --reexec`, which
+    # fetches a tarball from the server and unpacks it over XYMONHOME: this
+    # keg. A Homebrew install is updated with brew, so the stand-in declines.
+    # xymonclient.sh also asks `--level` on every run for the installed
+    # version and falls back to `xymon --version` on an empty answer, which
+    # is what upstream's program prints when no version file exists; so the
+    # stand-in prints nothing there, and on --update says why nothing
+    # happened and exits 0, so the run that asked does not end in an error.
+    # Removing the program instead would log "No such file or directory" on
+    # every run. Its manual page stays: the web help links it, and the
+    # program says for itself why it declines.
+    (prefix/"client/bin/clientupdate").unlink
+    (prefix/"client/bin/clientupdate").write <<~SH
+      #!/bin/sh
+      # Stands in for Xymon's clientupdate: a Homebrew install is updated with
+      # brew, not by a tarball its server pushes.
+      case "${1:-}" in
+      --level)
+      	exit 0
+      	;;
+      --update=*)
+      	echo "clientupdate: not updating to ${1#--update=}: installed with Homebrew; run brew upgrade" >&2
+      	exit 0
+      	;;
+      *)
+      	echo "usage: clientupdate --level | --update=VERSION" >&2
+      	exit 2
+      	;;
+      esac
+    SH
+    chmod 0755, prefix/"client/bin/clientupdate"
+
     # Persist config in #{etc}/xymon-preview so edits (hosts.cfg, graphs.cfg,
     # alerts.cfg, xymonserver.cfg ...) survive reinstalls and upgrades;
     # see lib/xymon_etc.rb for how (shared with xymon-client-preview).
@@ -274,5 +309,20 @@ class XymonServerPreview < Formula
     assert_predicate prefix/"cgi-bin/history.sh", :exist?
     assert_predicate prefix/"cgi-bin/eventlog.sh", :exist?
     assert_predicate prefix/"cgi-secure/useradm.sh", :exist?
+    # The clientupdate stand-in, not the built program: --level prints
+    # nothing (xymonclient.sh then uses `xymon --version`), --update
+    # declines without touching anything and exits 0, so the client run
+    # that asked for it does not fail.
+    cu = prefix/"client/bin/clientupdate"
+    assert_equal "#!/bin/sh", File.open(cu, &:readline).chomp
+    assert_equal "", shell_output("#{cu} --level")
+    # In a directory of its own: brew seeds testpath with a .gitconfig.
+    home = testpath/"home"
+    home.mkpath
+    cd home do
+      out = shell_output("XYMONHOME=#{home} #{cu} --update=4.9.99 --reexec 2>&1")
+      assert_match "not updating to 4.9.99", out
+      assert_empty Dir.children(home)
+    end
   end
 end
