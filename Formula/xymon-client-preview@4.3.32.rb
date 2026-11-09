@@ -26,7 +26,8 @@ class XymonClientPreviewAT4332 < Formula
                  "xymon-server-preview@4.3.32", "xymon-client-preview",
                  because: "they install the same tools and run the same services"
 
-  # ext/, logs/ and tmp/ ship empty; keep Homebrew's Cleaner from pruning them.
+  # ext/, logs/ and tmp/ ship empty; keep Homebrew's Cleaner from pruning them
+  # so the keg has the paths post_install redirects out of it (below).
   #   tmp  -- xymonclient.sh assembles each report in tmp/msg.<hostname>.txt;
   #     missing, every collection cycle fails and nothing is ever sent.
   #   logs -- clientlaunch.cfg tasks write their LOGFILEs here.
@@ -104,11 +105,32 @@ class XymonClientPreviewAT4332 < Formula
     XymonEtc.persist_etc(self, prefix/"etc", etc/"xymon-client-preview")
   end
 
+  # The client's state lives in #{var}/xymon-client-preview, not in the keg: a
+  # reinstall or a version bump replaces the keg, and would otherwise empty
+  #   ext    -- the admin's hook scripts, started from clientlaunch.cfg;
+  #   local  -- the admin's local additions;
+  #   logs   -- the tasks' logs, where the last failure is;
+  #   tmp    -- the last report and logfetch's position in each watched file.
+  # Each keg path becomes a symlink into the var tree, as the server formula
+  # does for its tmp and reports. Contents still inside a keg -- this one
+  # after `brew postinstall`, or the previous version's, which an upgrade
+  # removes only after this step -- move over first, so the first install
+  # with this formula keeps what the one before it made, and a file that is
+  # there already is kept rather than overwritten.
   def post_install
-    # Repair pass for existing installs: skip_clean keeps ext/, logs/ and
-    # tmp/ in a fresh keg, but `brew postinstall` should also restore them
-    # if they were lost on a live system.
-    %w[ext logs tmp].each { |d| (prefix/d).mkpath }
+    state = var/"xymon-client-preview"
+    %w[ext local logs tmp].each do |d|
+      keep = state/d
+      keep.mkpath
+      indir = prefix/d
+      prefix.parent.children.map { |keg| keg/d }.each do |old|
+        next unless old.directory? && !old.symlink?
+
+        old.children.each { |c| mv c, keep/c.basename unless (keep/c.basename).exist? }
+      end
+      rm_rf indir
+      ln_sf keep, indir
+    end
     # The launchd service logs to #{var}/log/xymon; nothing else creates that
     # dir on a client-only machine, and launchd will not create missing log
     # directories itself.
@@ -150,7 +172,10 @@ class XymonClientPreviewAT4332 < Formula
       Config lives in #{etc}/xymon-client-preview (the keg's etc/ is a symlink to it),
       so your edits survive reinstalls and upgrades. A file you never edited
       is replaced by the new upstream one; a file you edited keeps your version,
-      with the new upstream one written alongside as *.default.
+      with the new upstream one written alongside as *.default. The client's
+      state does too: ext/, local/, logs/ and tmp/ are symlinks into
+      #{var}/xymon-client-preview, so hook scripts, local additions, the tasks' logs
+      and logfetch's positions outlive the keg.
 
       After a `brew reinstall`/upgrade, restart the service (the running
       xymonlaunch still points into the replaced keg):
@@ -186,6 +211,12 @@ class XymonClientPreviewAT4332 < Formula
     # an existence check alone would also pass on a real, unwired etc/ dir.
     assert_predicate prefix/"etc", :symlink?
     assert_predicate prefix/"etc/xymonclient.cfg", :exist?
+    # The state must live outside the keg, or a reinstall throws away the
+    # admin's hook scripts and logfetch's positions.
+    %w[ext local logs tmp].each do |d|
+      assert_predicate prefix/d, :symlink?
+      assert_predicate prefix/d, :directory?
+    end
     # The drop-in directories both config files include, so a local task
     # or setting does not have to be an edit of the shipped file.
     %w[clientlaunch.d xymonclient.d].each { |d| assert_predicate prefix/"etc"/d, :directory? }
