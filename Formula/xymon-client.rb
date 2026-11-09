@@ -8,7 +8,14 @@ class XymonClient < Formula
   sha256 "09f297cf261634529b03b37a03816a9b501dc3757da2c9094e3791bfa544fa18"
   head "https://github.com/xymon-monitoring/xymon.git", branch: "main"
 
+  # Local analysis is a client-only choice: the client judges cpu, disk,
+  # memory and the rest itself, against its own localclient.cfg, and sends
+  # the results; the server's analysis.cfg then does not apply to it. Off by
+  # default (below); it needs pcre2 for xymond_client.
+  option "with-local-analysis", "Analyse the thresholds on this Mac, against its own localclient.cfg, instead of on the server"
+
   depends_on "openssl@3"
+  depends_on "pcre2" if build.with? "local-analysis"
 
   # The client and server install the same `xymond` deobfuscation tools; they
   # conflict if both are linked. Install the client keg-only or unlink the other.
@@ -25,9 +32,16 @@ class XymonClient < Formula
   skip_clean "ext", "logs", "tmp"
 
   def install
-    # configure.client is env-var driven too. CONFTYPE selects the client
-    # config flavor; XYMSRV is the server this client reports to (set at runtime).
-    ENV["CONFTYPE"]      = "client"
+    # configure.client is env-var driven too. CONFTYPE picks where the
+    # client's data is analysed: "server" sends the raw report and the
+    # server's analysis.cfg sets the thresholds, Xymon's usual setup and
+    # what xymon-rpm's xymon-client does; "client" builds the local client
+    # (clientlaunch.cfg runs xymonclient.sh --local, xymond_client is built
+    # and installed). The formula used to build "client" always, so the
+    # server's thresholds never applied to a Mac; it is the option now.
+    # Decided in #28 (item 2). XYMSRV is the server this client reports to
+    # (set at runtime).
+    ENV["CONFTYPE"]      = build.with?("local-analysis") ? "client" : "server"
     ENV["XYMONUSER"]     = ENV["USER"]
     ENV["XYMONTOPDIR"]   = prefix.to_s
     ENV["XYMONHOSTNAME"] = "localhost"
@@ -43,6 +57,32 @@ class XymonClient < Formula
     # creating them first; Homebrew only makes `prefix`, so pre-create them.
     %w[bin etc ext local logs tmp].each { |d| (prefix/d).mkpath }
     system "make", "install", "PKGBUILD=1"
+    # Over the built clientupdate. In server mode, when the server's
+    # client-local.cfg sets clientversion: for this host, xymonclient.sh
+    # execs `clientupdate --update=VERSION --reexec`, which fetches a
+    # tarball from the server and unpacks it over XYMONHOME: this keg. A
+    # Homebrew install is updated with brew, so the stand-in declines; the
+    # same one as xymon-server's, see there for why not just removing it.
+    (prefix/"bin/clientupdate").unlink
+    (prefix/"bin/clientupdate").write <<~SH
+      #!/bin/sh
+      # Stands in for Xymon's clientupdate: a Homebrew install is updated with
+      # brew, not by a tarball its server pushes.
+      case "${1:-}" in
+      --level)
+      	exit 0
+      	;;
+      --update=*)
+      	echo "clientupdate: not updating to ${1#--update=}: installed with Homebrew; run brew upgrade" >&2
+      	exit 0
+      	;;
+      *)
+      	echo "usage: clientupdate --level | --update=VERSION" >&2
+      	exit 2
+      	;;
+      esac
+    SH
+    chmod 0755, prefix/"bin/clientupdate"
     # The drop-in directories the two config files declare ("optional
     # directory .../etc/clientlaunch.d" and ".../etc/xymonclient.d"), which
     # 4.3.31's client/Makefile does not create; a missing one is skipped
@@ -117,6 +157,15 @@ class XymonClient < Formula
       Upgrading from a revision that kept config inside the keg? Those edits
       were not migrated - re-set XYMSRV in #{etc}/xymon-client/xymonclient.cfg.
 
+      The client sends its raw data and the server's analysis.cfg sets the
+      thresholds (cpu, disk, memory, procs ...), unless installed
+      --with-local-analysis, which has the Mac judge them itself against its
+      own #{etc}/xymon-client/localclient.cfg. Earlier revisions of this
+      formula always did the latter: a clientlaunch.cfg you never edited is
+      replaced and switches over; one you edited keeps "--local" on the
+      [client] task, which then fails for want of xymond_client. To keep local
+      analysis, reinstall --with-local-analysis.
+
       The netstat graph shows no TCP data on macOS until a kernel setting is
       changed: net.inet.tcp.disable_access_to_stats=1, the default, makes
       netstat -s report every TCP counter as 0 (UDP is unaffected). To get the
@@ -138,6 +187,30 @@ class XymonClient < Formula
     # The drop-in directories both config files include, so a local task
     # or setting does not have to be an edit of the shipped file.
     %w[clientlaunch.d xymonclient.d].each { |d| assert_predicate prefix/"etc"/d, :directory? }
+    # Where the data is analysed: --local on the [client] task, and
+    # xymond_client to run it, only with the option.
+    if build.with? "local-analysis"
+      assert_match(/--local/, (prefix/"etc/clientlaunch.cfg").read)
+      assert_predicate prefix/"bin/xymond_client", :executable?
+    else
+      refute_match(/--local/, (prefix/"etc/clientlaunch.cfg").read)
+      refute_predicate prefix/"bin/xymond_client", :exist?
+    end
+    # The clientupdate stand-in, not the built program: --level prints
+    # nothing (xymonclient.sh then uses `xymon --version`), --update
+    # declines without touching anything and exits 0, so the client run
+    # that asked for it does not fail.
+    cu = prefix/"bin/clientupdate"
+    assert_equal "#!/bin/sh", File.open(cu, &:readline).chomp
+    assert_equal "", shell_output("#{cu} --level")
+    # In a directory of its own: brew seeds testpath with a .gitconfig.
+    home = testpath/"home"
+    home.mkpath
+    cd home do
+      out = shell_output("XYMONHOME=#{home} #{cu} --update=4.9.99 --reexec 2>&1")
+      assert_match "not updating to 4.9.99", out
+      assert_empty Dir.children(home)
+    end
     # The service's environment, as the service block builds it: xymoncmd
     # with the keg's opt --env path must set XYMONCLIENTHOME to the keg,
     # or the client tasks point at /etc and /bin and collect nothing. The
