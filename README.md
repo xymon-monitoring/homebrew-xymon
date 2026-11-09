@@ -128,6 +128,9 @@ commit), on every push and a weekly cron:
 - **the server runs** — ✅ `tests/live-server.sh` starts the installed server
   as its service does and reads the bundled client's report back out of
   xymond, from the release tarball and from `--HEAD`.
+- **the client service delivers** — ✅ `tests/live-client.sh` starts the
+  installed client's service against that server, on one machine, and reads
+  its report back the same way.
 
 Each formula installs the binaries under the Homebrew prefix and provides a
 launchd `service` (`brew services start …`). They do **not** create a `xymon`
