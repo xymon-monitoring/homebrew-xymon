@@ -65,10 +65,22 @@ class XymonClient < Formula
   end
 
   # Run the client under launchd: `brew services start xymon-client`.
-  # xymonlaunch --no-daemon stays in the foreground so launchd supervises it.
-  # (Build is CI-verified; the running service still wants a real macOS check.)
+  # Through xymoncmd, not xymonlaunch directly: every path in
+  # clientlaunch.cfg and xymonclient.cfg is built on XYMONCLIENTHOME, which
+  # has no default and which xymonlaunch --env does not set. Started bare,
+  # the [client] task's ENVFILE and CMD expand to /etc/xymonclient.cfg and
+  # /bin/xymonclient.sh and the client never collects anything. xymoncmd
+  # derives XYMONCLIENTHOME from its --env path by cutting the file name and
+  # the trailing /etc off it, so that path is the keg's opt one: the persisted
+  # #{etc}/xymon-client/xymonclient.cfg ends in /xymon-client and would leave
+  # it unset (opt_prefix/etc is the symlink to it, so the file read is the
+  # same). It also sets MACHINEDOTS and SERVEROSTYPE, then execs xymonlaunch,
+  # so launchd still supervises xymonlaunch itself. --no-daemon keeps it in
+  # the foreground. The same --env twice: xymoncmd's is where the home comes
+  # from, xymonlaunch's is what it loads for its tasks.
   service do
-    run [opt_prefix/"bin/xymonlaunch", "--no-daemon",
+    run [opt_prefix/"bin/xymoncmd", "--env=#{opt_prefix}/etc/xymonclient.cfg",
+         opt_prefix/"bin/xymonlaunch", "--no-daemon",
          "--config=#{opt_prefix}/etc/clientlaunch.cfg",
          "--env=#{opt_prefix}/etc/xymonclient.cfg",
          "--log=#{var}/log/xymon/clientlaunch.log"]
@@ -114,5 +126,13 @@ class XymonClient < Formula
     # an existence check alone would also pass on a real, unwired etc/ dir.
     assert_predicate prefix/"etc", :symlink?
     assert_predicate prefix/"etc/xymonclient.cfg", :exist?
+    # The service's environment, as the service block builds it: xymoncmd
+    # with the keg's opt --env path must set XYMONCLIENTHOME to the keg,
+    # or the client tasks point at /etc and /bin and collect nothing. The
+    # hostname and OS type come with it; xymonclient.sh needs both.
+    env = shell_output("#{opt_prefix}/bin/xymoncmd --env=#{opt_prefix}/etc/xymonclient.cfg /usr/bin/env")
+    assert_match "\nXYMONCLIENTHOME=#{opt_prefix}\n", "\n#{env}"
+    assert_match(/^MACHINEDOTS=./, env)
+    assert_match(/^SERVEROSTYPE=darwin$/, env)
   end
 end
