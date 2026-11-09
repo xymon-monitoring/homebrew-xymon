@@ -84,6 +84,12 @@ class XymonServerPreviewAT4332 < Formula
     %w[bin etc ext web cgi-bin cgi-secure www server download].each { |d| (prefix/d).mkpath }
     # INSTALLROOT unset → install directly into XYMONTOPDIR (= prefix).
     system "make", "install", "PKGBUILD=1"
+    # Opt-in in 4.3.31: the five diagnostic programs the build makes and
+    # a plain install discards (xymonloadhosts, xymonstackio,
+    # xymonavailability, xymonlocator, xymonnetprobe), into server/bin
+    # beside the rest, and their one manual page, xymontools(1). xymon-rpm
+    # ships them as xymon-tools. Server builds only, which this is.
+    system "make", "install-tools", "PKGBUILD=1"
     # `configure --server` lays the server out under prefix/server/ (with a
     # matching client/ tree). Ensure the skip_clean'd runtime dirs exist in
     # the staged keg (make install does not reliably create the empty ones).
@@ -317,6 +323,13 @@ class XymonServerPreviewAT4332 < Formula
     assert_predicate prefix/"cgi-secure/useradm.sh", :exist?
     # The bundled client's drop-in directory, kept from the cleaner.
     assert_predicate prefix/"client/etc/xymonclient.d", :directory?
+    # The diagnostic programs install-tools adds, and their manual page.
+    %w[xymonloadhosts xymonstackio xymonavailability xymonlocator xymonnetprobe].each do |t|
+      assert_predicate prefix/"server/bin"/t, :executable?
+    end
+    assert_predicate man1/"xymontools.1", :exist?
+    # One of them runs: without arguments xymonloadhosts prints its usage.
+    assert_match "Usage:", shell_output("#{prefix}/server/bin/xymonloadhosts 2>&1", 1)
     # The clientupdate stand-in, not the built program: --level prints
     # nothing (xymonclient.sh then uses `xymon --version`), --update
     # declines without touching anything and exits 0, so the client run
