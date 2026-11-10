@@ -96,6 +96,23 @@ class XymonClientPreview < Formula
     # xymon#411 on; this stays until the pinned release carries it.
     %w[clientlaunch.d xymonclient.d].each { |d| (prefix/"etc"/d).mkpath }
 
+    # Log rotation, as in xymon-server-preview.rb: the script beside the programs,
+    # and a task in clientlaunch.d that runs it once a day over the tasks'
+    # logs and the launchd service's. The client's PATH has no bin, so the
+    # full path. In the keg's etc before persist_etc, so it is the admin's.
+    cp Pathname(__FILE__).dirname.parent/"lib/xymon-rotatelogs", prefix/"bin/xymon-rotatelogs"
+    chmod 0755, prefix/"bin/xymon-rotatelogs"
+    (prefix/"etc/clientlaunch.d/rotatelogs.cfg").write <<~EOS
+      # Rotates the logs once a day: see xymon-rotatelogs for what it keeps.
+      # Change the size (-s BYTES), the count (-k N) or the directories here,
+      # or add a DISABLED line to stop it.
+      [rotatelogs]
+      	ENVFILE $XYMONCLIENTHOME/etc/xymonclient.cfg
+      	CMD $XYMONCLIENTHOME/bin/xymon-rotatelogs $XYMONCLIENTLOGS #{var}/log/xymon-preview/
+      	LOGFILE $XYMONCLIENTLOGS/rotatelogs.log
+      	INTERVAL 1d
+    EOS
+
     # Persist config in #{etc}/xymon-client-preview so edits (XYMSRV in
     # xymonclient.cfg, clientlaunch.cfg tasks ...) survive reinstalls and
     # upgrades; see lib/xymon_etc.rb for how (shared with xymon-server-preview).
@@ -220,6 +237,17 @@ class XymonClientPreview < Formula
     # The drop-in directories both config files include, so a local task
     # or setting does not have to be an edit of the shipped file.
     %w[clientlaunch.d xymonclient.d].each { |d| assert_predicate prefix/"etc"/d, :directory? }
+    # Log rotation: the task is there, and the script rotates a log past
+    # the size, keeps a copy, and leaves a small one alone.
+    assert_predicate prefix/"etc/clientlaunch.d/rotatelogs.cfg", :file?
+    logs = testpath/"logs"
+    logs.mkpath
+    (logs/"big.log").write("x" * 2_000_000)
+    (logs/"small.log").write("y")
+    system prefix/"bin/xymon-rotatelogs", "-s", "1000000", logs
+    assert_predicate logs/"big.log.1.gz", :file?
+    assert_equal 0, (logs/"big.log").size
+    assert_equal 1, (logs/"small.log").size
     # Where the data is analysed: --local on the [client] task, and
     # xymond_client to run it, only with the option.
     if build.with? "local-analysis"
