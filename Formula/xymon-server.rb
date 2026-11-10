@@ -304,6 +304,19 @@ class XymonServer < Formula
       (8080 is Homebrew Apache's default; port 80 is privileged - to use it,
        set 'Listen 80' in httpd.conf and run 'sudo brew services start httpd'.)
 
+      The secure pages (acknowledge, enable/disable, the critical-systems editor,
+      user admin, password change) sit behind HTTP authentication against
+        #{etc}/xymon/xymonpasswd
+      which nothing creates: until it exists, every /xymon-seccgi/ request fails
+      with a 500. Create it with the first user, then hand it to the web server's
+      user, which reads it and, for the user admin and password pages, rewrites it:
+        htpasswd -c -B #{etc}/xymon/xymonpasswd admin
+        sudo chown _www #{etc}/xymon/xymonpasswd && sudo chmod 600 #{etc}/xymon/xymonpasswd
+      More users: the user admin page, or 'sudo -u _www htpasswd -B ... NAME'.
+      Those two pages run htpasswd from xymonserver.cfg's PATH, which has no
+      #{HOMEBREW_PREFIX}/bin: add it there for them. xymongroups is needed only
+      if you uncomment AuthGroupFile in xymon-apache.conf.
+
       xymond needs one SysV shared-memory segment per channel (~9-10 per
       process); macOS's default kern.sysv.shmseg=8 is too low, and xymond
       crash-loops with "Could not attach shm / Too many open files" until it
