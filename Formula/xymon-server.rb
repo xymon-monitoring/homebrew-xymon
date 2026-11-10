@@ -27,9 +27,11 @@ class XymonServer < Formula
   #     xymond's checkpoint), but the keg still needs the path to exist so the
   #     symlink has something to replace. Missing entirely, xymond_rrd dies
   #     every cycle ("Cannot bind to cache-control socket").
-  #   client/{tmp,logs} -- the bundled local client (the [xymonclient] task in
+  #   client/{tmp,logs} -- the bundled client (the [xymonclient] task in
   #     tasks.cfg self-monitors the server host). Without client/tmp the client
   #     can't write msg.localhost.txt, so the host reports no cpu/memory/disk.
+  #     Redirected to the var tree in post_install, with ext and local, like
+  #     server/tmp; the keg path has to exist for the symlink to replace.
   #   server/www/{html,notes,rep,snap,wml} -- xymongen logs "Cannot read links
   #     in directory .../www/notes" and skips host notes when they are missing.
   #     rep and snap are redirected to the var tree in post_install, like
@@ -174,10 +176,28 @@ class XymonServer < Formula
   def post_install
     # Repair pass for existing installs: skip_clean keeps the runtime dirs
     # in a fresh keg, but `brew postinstall` should also restore them if
-    # they were lost on a live system. server/tmp is handled below, where it
-    # is redirected out of the keg.
-    [prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
+    # they were lost on a live system. server/tmp and the bundled client's
+    # directories are handled below, where they are redirected out of the keg.
     %w[html notes wml].each { |d| (prefix/"server/www"/d).mkpath }
+    # The bundled client's state, as xymon-client.rb keeps its own: ext (the
+    # admin's hook scripts), local, logs, and tmp with the last report and
+    # logfetch's position in each watched file, which a new keg would
+    # otherwise re-read from the start. Each becomes a symlink into
+    # #{var}/xymon/client; what is still inside a keg, this one's or an older
+    # version's, moves over first, and a file already there is kept.
+    state = var/"xymon"/"client"
+    %w[ext local logs tmp].each do |d|
+      keep = state/d
+      keep.mkpath
+      indir = prefix/"client"/d
+      prefix.parent.children.map { |keg| keg/"client"/d }.each do |old|
+        next unless old.directory? && !old.symlink?
+
+        old.children.each { |c| mv c, keep/c.basename unless (keep/c.basename).exist? }
+      end
+      rm_rf indir
+      ln_sf keep, indir
+    end
     # XYMONLOGDIR and the launchd service logs live in #{var}/log/xymon,
     # outside the keg; nothing in the keg creates it (same placement as the
     # client formula).
@@ -280,7 +300,8 @@ class XymonServer < Formula
         brew services start xymon-server
 
       Config lives in #{etc}/xymon (the keg's server/etc is a symlink to it),
-      and the bundled client's in #{etc}/xymon/client (client/etc likewise),
+      and the bundled client's in #{etc}/xymon/client (client/etc likewise;
+      its ext/, local/, logs/ and tmp/ are symlinks into #{var}/xymon/client),
       so your edits survive reinstalls and upgrades. A file you never edited
       is replaced by the new upstream one; a file you edited keeps your version,
       with the new upstream one written alongside as *.default. An edit made
@@ -366,6 +387,12 @@ class XymonServer < Formula
     assert_predicate prefix/"client/etc", :symlink?
     assert_predicate prefix/"client/etc/xymonclient.cfg", :file?
     assert_predicate prefix/"client/etc/xymonclient.d", :directory?
+    # And its state, or a reinstall throws away the admin's hook scripts and
+    # logfetch's positions.
+    %w[ext local logs tmp].each do |d|
+      assert_predicate prefix/"client"/d, :symlink?
+      assert_predicate prefix/"client"/d, :directory?
+    end
     # Log rotation: the task is there, and the script rotates a log past
     # the size, keeps a copy, and leaves a small one alone.
     assert_predicate prefix/"server/etc/tasks.d/rotatelogs.cfg", :file?
