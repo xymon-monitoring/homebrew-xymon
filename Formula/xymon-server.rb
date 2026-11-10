@@ -34,12 +34,7 @@ class XymonServer < Formula
   #     in directory .../www/notes" and skips host notes when they are missing.
   #     rep and snap are redirected to the var tree in post_install, like
   #     server/tmp; the keg path has to exist for the symlink to replace.
-  #   client/etc/xymonclient.d -- the drop-in directory xymonclient.cfg
-  #     includes ("optional directory"), which 4.3.31's build does not create
-  #     and which ships empty; a missing one is skipped silently. Not
-  #     clientlaunch.d: the server never reads clientlaunch.cfg, its bundled
-  #     client is a task in tasks.cfg, so extra tasks belong in tasks.d.
-  skip_clean "server/tmp", "client/tmp", "client/logs", "client/etc/xymonclient.d",
+  skip_clean "server/tmp", "client/tmp", "client/logs",
              "server/www/html", "server/www/notes", "server/www/rep",
              "server/www/snap", "server/www/wml"
   # cgi-bin/cgi-secure hold cgiwrap hardlinked to every CGI name; keg
@@ -91,8 +86,13 @@ class XymonServer < Formula
     # `configure --server` lays the server out under prefix/server/ (with a
     # matching client/ tree). Ensure the skip_clean'd runtime dirs exist in
     # the staged keg (make install does not reliably create the empty ones).
-    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs",
-     prefix/"client/etc/xymonclient.d"].each(&:mkpath)
+    [prefix/"server/tmp", prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
+    # The drop-in directory xymonclient.cfg includes ("optional directory"),
+    # which 4.3.31's build does not create; a missing one is skipped
+    # silently. Not clientlaunch.d: the server never reads clientlaunch.cfg,
+    # its bundled client is a task in tasks.cfg, so extra tasks belong in
+    # tasks.d. Before persist_etc, which mirrors directories.
+    (prefix/"client/etc/xymonclient.d").mkpath
     %w[html notes rep snap wml].each { |d| (prefix/"server/www"/d).mkpath }
 
     # Over the built clientupdate. The bundled client runs in server mode
@@ -157,6 +157,12 @@ class XymonServer < Formula
     # formula from the keg's .brew copy, where the tap's lib/ is absent.
     require_relative "../lib/xymon_etc"
     XymonEtc.persist_etc(self, prefix/"server/etc", etc/"xymon")
+    # The bundled client's config the same way, into #{etc}/xymon/client:
+    # tasks.cfg hands it client/etc/xymonclient.cfg, and clientlaunch.cfg,
+    # localclient.cfg and xymonclient.d sit beside it. Under etc/xymon, not
+    # etc/xymon-client, which is the standalone formula's: a machine
+    # switched between the two roles must not have the one read the other's.
+    XymonEtc.persist_etc(self, prefix/"client/etc", etc/"xymon/client")
   end
 
   # Writable var-tree dirs are created here, not in `install`.
@@ -170,7 +176,7 @@ class XymonServer < Formula
     # in a fresh keg, but `brew postinstall` should also restore them if
     # they were lost on a live system. server/tmp is handled below, where it
     # is redirected out of the keg.
-    [prefix/"client/tmp", prefix/"client/logs", prefix/"client/etc/xymonclient.d"].each(&:mkpath)
+    [prefix/"client/tmp", prefix/"client/logs"].each(&:mkpath)
     %w[html notes wml].each { |d| (prefix/"server/www"/d).mkpath }
     # XYMONLOGDIR and the launchd service logs live in #{var}/log/xymon,
     # outside the keg; nothing in the keg creates it (same placement as the
@@ -274,9 +280,11 @@ class XymonServer < Formula
         brew services start xymon-server
 
       Config lives in #{etc}/xymon (the keg's server/etc is a symlink to it),
+      and the bundled client's in #{etc}/xymon/client (client/etc likewise),
       so your edits survive reinstalls and upgrades. A file you never edited
       is replaced by the new upstream one; a file you edited keeps your version,
-      with the new upstream one written alongside as *.default.
+      with the new upstream one written alongside as *.default. An edit made
+      inside an older keg's client/etc was not migrated: re-apply it there.
 
       Binaries are under #{opt_prefix}/server/bin (not linked into PATH); run e.g.
         #{opt_prefix}/server/bin/xymon 127.0.0.1 "ping"
@@ -352,7 +360,11 @@ class XymonServer < Formula
     assert_predicate prefix/"cgi-bin/history.sh", :exist?
     assert_predicate prefix/"cgi-bin/eventlog.sh", :exist?
     assert_predicate prefix/"cgi-secure/useradm.sh", :exist?
-    # The bundled client's drop-in directory, kept from the cleaner.
+    # The bundled client's config must persist too: client/etc is a symlink
+    # into #{etc}/xymon/client, with the files and the drop-in directory
+    # behind it.
+    assert_predicate prefix/"client/etc", :symlink?
+    assert_predicate prefix/"client/etc/xymonclient.cfg", :file?
     assert_predicate prefix/"client/etc/xymonclient.d", :directory?
     # Log rotation: the task is there, and the script rotates a log past
     # the size, keeps a copy, and leaves a small one alone.
