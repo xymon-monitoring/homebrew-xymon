@@ -136,8 +136,9 @@ Each formula installs the binaries under the Homebrew prefix and provides a
 launchd `service` (`brew services start …`). They do **not** create a `xymon`
 system user or configure a web server — host configuration (`etc/hosts.cfg`,
 the reporting server in `etc/xymonclient.cfg`, web CGIs) is left to the admin.
-Config persists in `$(brew --prefix)/etc/xymon` (server) and
-`$(brew --prefix)/etc/xymon-client` (client) — the keg's `etc/` is a symlink to
+Config persists in `$(brew --prefix)/etc/xymon` (server, with its bundled
+client's under `etc/xymon/client`) and `$(brew --prefix)/etc/xymon-client`
+(client) — the keg's `etc/` is a symlink to
 it — so edits survive reinstalls and upgrades; changed upstream defaults are
 written alongside as `*.default` files. The server's runtime state does too:
 `XYMONVAR` and `XYMONTMP` are symlinks into `$(brew --prefix)/var/xymon`, so an
