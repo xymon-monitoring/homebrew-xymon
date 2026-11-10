@@ -77,6 +77,16 @@ rm -rf "$(brew --prefix)/var/log/xymon"    # logs
 brew untap xymon-monitoring/xymon          # drop the tap itself
 ```
 
+## When Xymon releases
+
+`.github/workflows/release.yml` looks once a day for a `rel-X.Y.Z` tag newer
+than the one the normal formulae pin. When there is one, it pins them to it
+(`scripts/pin-release.sh X.Y.Z`: the url, the sha256 checked against the
+release's own, and the preview formulae regenerated), builds both from the
+tarball on macOS, runs their test blocks and the two live tests, and opens a
+pull request with the results, for a person to merge: a release can need a
+caveat or a migration the pin does not carry.
+
 ## Try the next release (preview)
 
 `xymon-server-preview` and `xymon-client-preview` install the latest preview of
