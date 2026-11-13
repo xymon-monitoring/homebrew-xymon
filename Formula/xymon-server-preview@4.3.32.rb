@@ -170,7 +170,7 @@ class XymonServerPreviewAT4332 < Formula
   end
 
   # Writable var-tree dirs are created here, not in `install`.
-  #   #{var}/xymon = XYMONVAR -- RRDs, history, acks, disabled flags, status
+  #   #{var}/xymon-preview = XYMONVAR -- RRDs, history, acks, disabled flags, status
   #     logs. XYMONVAR bakes as prefix/data (inside the keg), so a `brew
   #     reinstall` or version bump would wipe all collected history. Keep the
   #     data in the persistent var tree and symlink the keg path to it so it
@@ -185,7 +185,7 @@ class XymonServerPreviewAT4332 < Formula
     # admin's hook scripts), local, logs, and tmp with the last report and
     # logfetch's position in each watched file, which a new keg would
     # otherwise re-read from the start. Each becomes a symlink into
-    # #{var}/xymon/client; what is still inside a keg, this one's or an older
+    # #{var}/xymon-preview/client; what is still inside a keg, this one's or an older
     # version's, moves over first, and a file already there is kept.
     state = var/"xymon-preview"/"client"
     %w[ext local logs tmp].each do |d|
@@ -219,6 +219,32 @@ class XymonServerPreviewAT4332 < Formula
     xymontmp.mkpath
     rm_rf prefix/"server/tmp"
     ln_sf xymontmp, prefix/"server/tmp"
+
+    # The server extensions the same way: ext holds what xymonlaunch starts
+    # from tasks.cfg and tasks.d -- xymonnet-again.sh, and every extension
+    # the admin installs there, as xymon-plugins does -- and inside the keg
+    # every upgrade took them away, leaving links in tasks.d that xymonlaunch
+    # skips without a word. What this keg ships is Xymon's code, like bin/:
+    # it replaces the copy in the var tree. Everything else, the admin's,
+    # moves over from a keg that still holds it -- the previous version's,
+    # which an upgrade removes only after this step -- and what is already
+    # there is kept.
+    extkeep = xymonvar/"ext"
+    extkeep.mkpath
+    extdir = prefix/"server/ext"
+    if extdir.directory? && !extdir.symlink?
+      extdir.children.each do |c|
+        rm_rf extkeep/c.basename
+        mv c, extkeep/c.basename
+      end
+    end
+    prefix.parent.children.map { |keg| keg/"server/ext" }.each do |old|
+      next unless old.directory? && !old.symlink?
+
+      old.children.each { |c| mv c, extkeep/c.basename unless (extkeep/c.basename).exist? }
+    end
+    rm_rf extdir
+    ln_sf extkeep, extdir
 
     # The generated reports the same way: www/rep (report.cgi), www/snap
     # (snapshot.cgi) and www/periodic (xymonreports.sh, the periodic-* tasks)
@@ -303,11 +329,13 @@ class XymonServerPreviewAT4332 < Formula
 
       Config lives in #{etc}/xymon-preview (the keg's server/etc is a symlink to it),
       and the bundled client's in #{etc}/xymon-preview/client (client/etc likewise;
-      its ext/, local/, logs/ and tmp/ are symlinks into #{var}/xymon/client),
+      its ext/, local/, logs/ and tmp/ are symlinks into #{var}/xymon-preview/client),
       so your edits survive reinstalls and upgrades. A file you never edited
       is replaced by the new upstream one; a file you edited keeps your version,
       with the new upstream one written alongside as *.default. An edit made
       inside an older keg's client/etc was not migrated: re-apply it there.
+      The server extensions, server/ext, are a symlink into #{var}/xymon-preview/ext:
+      what you install there survives upgrades too.
 
       Binaries are under #{opt_prefix}/server/bin (not linked into PATH); run e.g.
         #{opt_prefix}/server/bin/xymon 127.0.0.1 "ping"
@@ -374,6 +402,10 @@ class XymonServerPreviewAT4332 < Formula
     # XYMONTMP must live outside the keg, or every install throws away
     # xymond's checkpoint and the web UI is blank until a client reports.
     assert_predicate prefix/"server/tmp", :symlink?
+    # And the server extensions, or every upgrade throws them away; Xymon's
+    # own is there through the link.
+    assert_predicate prefix/"server/ext", :symlink?
+    assert_predicate prefix/"server/ext/xymonnet-again.sh", :file?
     # So must the generated reports, or every install throws them away.
     %w[rep snap periodic].each { |d| assert_predicate prefix/"server/www"/d, :symlink? }
     assert_predicate prefix/"server/etc/xymonserver.cfg", :exist?

@@ -218,6 +218,32 @@ class XymonServer < Formula
     rm_rf prefix/"server/tmp"
     ln_sf xymontmp, prefix/"server/tmp"
 
+    # The server extensions the same way: ext holds what xymonlaunch starts
+    # from tasks.cfg and tasks.d -- xymonnet-again.sh, and every extension
+    # the admin installs there, as xymon-plugins does -- and inside the keg
+    # every upgrade took them away, leaving links in tasks.d that xymonlaunch
+    # skips without a word. What this keg ships is Xymon's code, like bin/:
+    # it replaces the copy in the var tree. Everything else, the admin's,
+    # moves over from a keg that still holds it -- the previous version's,
+    # which an upgrade removes only after this step -- and what is already
+    # there is kept.
+    extkeep = xymonvar/"ext"
+    extkeep.mkpath
+    extdir = prefix/"server/ext"
+    if extdir.directory? && !extdir.symlink?
+      extdir.children.each do |c|
+        rm_rf extkeep/c.basename
+        mv c, extkeep/c.basename
+      end
+    end
+    prefix.parent.children.map { |keg| keg/"server/ext" }.each do |old|
+      next unless old.directory? && !old.symlink?
+
+      old.children.each { |c| mv c, extkeep/c.basename unless (extkeep/c.basename).exist? }
+    end
+    rm_rf extdir
+    ln_sf extkeep, extdir
+
     # The generated reports the same way: www/rep (report.cgi), www/snap
     # (snapshot.cgi) and www/periodic (xymonreports.sh, the periodic-* tasks)
     # are written under XYMONWWWDIR, inside the keg, so every install threw
@@ -306,6 +332,8 @@ class XymonServer < Formula
       is replaced by the new upstream one; a file you edited keeps your version,
       with the new upstream one written alongside as *.default. An edit made
       inside an older keg's client/etc was not migrated: re-apply it there.
+      The server extensions, server/ext, are a symlink into #{var}/xymon/ext:
+      what you install there survives upgrades too.
 
       Binaries are under #{opt_prefix}/server/bin (not linked into PATH); run e.g.
         #{opt_prefix}/server/bin/xymon 127.0.0.1 "ping"
@@ -372,6 +400,10 @@ class XymonServer < Formula
     # XYMONTMP must live outside the keg, or every install throws away
     # xymond's checkpoint and the web UI is blank until a client reports.
     assert_predicate prefix/"server/tmp", :symlink?
+    # And the server extensions, or every upgrade throws them away; Xymon's
+    # own is there through the link.
+    assert_predicate prefix/"server/ext", :symlink?
+    assert_predicate prefix/"server/ext/xymonnet-again.sh", :file?
     # So must the generated reports, or every install throws them away.
     %w[rep snap periodic].each { |d| assert_predicate prefix/"server/www"/d, :symlink? }
     assert_predicate prefix/"server/etc/xymonserver.cfg", :exist?

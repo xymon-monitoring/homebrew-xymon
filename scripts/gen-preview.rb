@@ -77,6 +77,7 @@ def preview_of(role, milestone, version, url, sha256, all)
   s.sub!("@@CONFLICTS@@\n", conflicts(all - [name]))
   # Config, data and logs of their own.
   s.gsub!(%r{(\#\{etc\}/|etc/")xymon(?=[" /)])}, '\1xymon-preview')
+  s.gsub!(%r{(\#\{var\}/)xymon(?=[" /):])}, '\1xymon-preview')
   s.gsub!('var/"xymon"', 'var/"xymon-preview"')
   s.gsub!('var/"xymon/tmp"', 'var/"xymon-preview/tmp"')
   s.gsub!(%r{log/xymon(?=[/"])}, "log/xymon-preview")

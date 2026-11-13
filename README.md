@@ -73,13 +73,15 @@ brew untap xymon-monitoring/xymon
 
 The binaries are in the keg, under `$(brew --prefix)/opt/xymon-server/server`
 (or `opt/xymon-client`), not linked into `PATH`. Everything that must outlive
-the keg is outside it; the config, the data and the client's directories are
+the keg is outside it; the config, the data, the server extensions and the
+client's directories are
 reached from the keg through symlinks, the logs are written there directly:
 
 | | server | client |
 |---|---|---|
 | config | `etc/xymon` (`etc/xymon/client` for the bundled client) | `etc/xymon-client` |
 | data: RRDs, history, xymond's checkpoint | `var/xymon` | |
+| the server extensions, `server/ext` | `var/xymon/ext` | |
 | the client's `ext`, `local`, `logs`, `tmp` | `var/xymon/client` | `var/xymon-client` |
 | logs | `var/log/xymon` | `var/log/xymon` |
 
