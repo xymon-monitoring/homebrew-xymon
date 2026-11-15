@@ -76,6 +76,18 @@ check "the statuses have a colour, not just a name" \
 	"echo '$b' | grep -qE '\\|(green|yellow|red|clear)$'"
 check "xymonlaunch is still running" "kill -0 $launch_pid"
 
+# The runtime directory, where this build's xymonserver.cfg has one (4.3.31
+# has none, and keeps its pidfile among the logs): xymond's pidfile is
+# there, and holds the pid of a running process.
+rundir=$(sed -n 's/^XYMONRUNDIR="\([^"]*\)".*/\1/p' "$S/etc/xymonserver.cfg")
+if [ -n "$rundir" ]; then
+	echo "== pidfiles and sockets are in the runtime directory =="
+	check "XYMONRUNDIR is $(brew --prefix)/var/run/xymon (is $rundir)" \
+		"test '$rundir' = '$(brew --prefix)/var/run/xymon'"
+	check "xymond's pidfile is in it, of a running process" \
+		"kill -0 \$(cat '$rundir/xymond.pid')"
+fi
+
 # Deliberately not asserted: conn. It comes from xymonnet through fping,
 # which on macOS needs root for its ICMP socket, so it says what the
 # runner's privileges are, not what the formula does. The web pages: they

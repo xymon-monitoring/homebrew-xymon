@@ -68,6 +68,11 @@ class XymonServerPreview < Formula
     ENV["SECUREXYMONCGIURL"] = "/xymon-seccgi"
     ENV["HTTPDGID"]          = "_www"
     ENV["XYMONLOGDIR"]       = "#{var}/log/xymon-preview"
+    # Pidfiles and sockets (xymond_rrd's rrdctl.*, what the extensions make)
+    # in a directory of their own. Left unset, configure.server puts them
+    # in XYMONLOGDIR, among the logs. 4.3.31 has no such setting and ignores
+    # this: its pidfiles stay in the log directory.
+    ENV["XYMONRUNDIR"]       = "#{var}/run/xymon-preview"
     ENV["XYMONHOSTNAME"]     = "localhost"
     ENV["XYMONHOSTIP"]       = "127.0.0.1"
     ENV["MANROOT"]           = man.to_s
@@ -204,6 +209,9 @@ class XymonServerPreview < Formula
     # outside the keg; nothing in the keg creates it (same placement as the
     # client formula).
     (var/"log/xymon-preview").mkpath
+    # XYMONRUNDIR, where xymonserver.cfg has one: nothing else creates it,
+    # and without it xymond runs with no pidfile ("Cannot open PID file").
+    (var/"run/xymon-preview").mkpath
 
     xymonvar = var/"xymon-preview"
     %w[rrd acks data disabled hist histlogs hostdata logs].each { |d| (xymonvar/d).mkpath }
@@ -336,6 +344,10 @@ class XymonServerPreview < Formula
       inside an older keg's client/etc was not migrated: re-apply it there.
       The server extensions, server/ext, are a symlink into #{var}/xymon-preview/ext:
       what you install there survives upgrades too.
+      From Xymon 4.3.32, pidfiles and sockets are in #{var}/run/xymon-preview
+      (XYMONRUNDIR in xymonserver.cfg), no longer among the logs: what reads
+      a socket there by its path, as an extension's client does, needs the
+      new one after the upgrade that moves it.
 
       Binaries are under #{opt_prefix}/server/bin (not linked into PATH); run e.g.
         #{opt_prefix}/server/bin/xymon 127.0.0.1 "ping"
@@ -409,6 +421,13 @@ class XymonServerPreview < Formula
     # So must the generated reports, or every install throws them away.
     %w[rep snap periodic].each { |d| assert_predicate prefix/"server/www"/d, :symlink? }
     assert_predicate prefix/"server/etc/xymonserver.cfg", :exist?
+    # The runtime directory: made by post_install, and the one this
+    # install's xymonserver.cfg names where the build has the setting
+    # (4.3.31 has none). Read from the copy of what was shipped, since a
+    # file the admin edited is kept.
+    assert_predicate var/"run/xymon-preview", :directory?
+    shipped = (etc/"xymon-preview/.shipped/xymonserver.cfg").read
+    assert_includes shipped, "XYMONRUNDIR=\"#{var}/run/xymon-preview\"" if shipped.include?("XYMONRUNDIR=")
     # The cgiwrap hard links keg post-processing was observed dropping.
     # post_install restores any that are missing, so these must be there
     # after an upgrade as well as a fresh install.
