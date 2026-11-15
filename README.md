@@ -66,6 +66,7 @@ For a complete removal, also:
 rm -rf "$(brew --prefix)/etc/xymon"        # config  (client: etc/xymon-client)
 rm -rf "$(brew --prefix)/var/xymon"        # data    (client: var/xymon-client)
 rm -rf "$(brew --prefix)/var/log/xymon"    # logs
+rm -rf "$(brew --prefix)/var/run/xymon"    # pidfiles and sockets (server, from Xymon 4.3.32)
 brew untap xymon-monitoring/xymon
 ```
 
@@ -84,6 +85,7 @@ reached from the keg through symlinks, the logs are written there directly:
 | the server extensions, `server/ext` | `var/xymon/ext` | |
 | the client's `ext`, `local`, `logs`, `tmp` | `var/xymon/client` | `var/xymon-client` |
 | logs | `var/log/xymon` | `var/log/xymon` |
+| pidfiles and sockets, from Xymon 4.3.32 | `var/run/xymon` | |
 
 All under `$(brew --prefix)`. A config file you edited keeps your version at an
 upgrade, with the new upstream one beside it as `*.default`; one you never
@@ -117,7 +119,8 @@ brew services start xymon-server-preview
   earlier ones' pull requests and more. A milestone's formulae go away once it
   is released.
 - They keep config, data and logs of their own (`etc/xymon-preview`,
-  `etc/xymon-client-preview`, `var/xymon-preview`, `var/log/xymon-preview`),
+  `etc/xymon-client-preview`, `var/xymon-preview`, `var/log/xymon-preview`,
+  `var/run/xymon-preview`),
   shared by every preview formula: a normal install's are left alone, and
   moving between milestones keeps your settings. Every Xymon formula of the
   tap conflicts with every other, so uninstall one to install another.
