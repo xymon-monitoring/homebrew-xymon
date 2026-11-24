@@ -8,6 +8,7 @@ class XymonServer < Formula
   sha256 "09f297cf261634529b03b37a03816a9b501dc3757da2c9094e3791bfa544fa18"
   head "https://github.com/xymon-monitoring/xymon.git", branch: "main"
 
+  depends_on "c-ares"
   depends_on "openssl@3"
   depends_on "pcre2"
   depends_on "rrdtool"

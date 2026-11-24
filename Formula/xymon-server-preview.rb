@@ -11,6 +11,7 @@ class XymonServerPreview < Formula
   sha256 "39b985a0c4b0ecbee57b44ec8cc4bb3c210d05e1785174954a55504916900b44"
   version "4.3.32-preview5"
 
+  depends_on "c-ares"
   depends_on "openssl@3"
   depends_on "pcre2"
   depends_on "rrdtool"
